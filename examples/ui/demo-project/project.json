@@ -1,0 +1,9 @@
+{
+  "fileVersion": 3,
+  "name": "PCLgraph Demo",
+  "graphs": [
+    {
+      "file": "graphs/graph-000.json"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/QiuYilin/vcpkg-registry",
+      "baseline": "a4a5f8250470d97c1ed55b071569f52a569659e3",
+      "packages": ["taskflow", "taskgraph"]
+    }
+  ]
+}

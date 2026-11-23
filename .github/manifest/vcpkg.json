@@ -1,0 +1,30 @@
+{
+    "name": "pclgraph",
+    "version-string": "latest",
+    "dependencies": [
+        {
+            "name": "taskflow",
+            "version>=": "3.11.0"
+        },
+        "spdlog",
+        "nlohmann-json",
+        "pcl",
+        "gtest",
+        {
+            "name": "imgui",
+            "version>=": "1.90.7",
+            "features": [
+                "glfw-binding",
+                "opengl3-binding",
+                "docking-experimental"
+            ]
+        },
+        "opengl",
+        {
+            "name": "imgui-node-editor",
+            "version>=": "0.9.3"
+        },
+        "portable-file-dialogs"
+    ],
+    "builtin-baseline": "817892b0ecbc6af994dd6df999c73faf795adbf2"
+}
