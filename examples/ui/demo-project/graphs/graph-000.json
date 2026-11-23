@@ -1,15 +1,15 @@
 {
-  "name": "Reader -> VoxelGrid -> Writer",
+  "name": "IO -> Filter -> Keypoints -> FPFH -> SAC-IA -> ICP",
   "nodes": [
     {
       "id": 0,
       "type": "pcl.io.reader",
-      "name": "Reader",
+      "name": "Source Reader",
       "properties": [
         {
           "name": "path",
           "valueType": "string",
-          "value": "points.pcd"
+          "value": "source.pcd"
         },
         {
           "name": "point_type",
@@ -20,13 +20,13 @@
       "inputs": [],
       "position": {
         "x": 80.0,
-        "y": 160.0
+        "y": 140.0
       }
     },
     {
       "id": 1,
       "type": "pcl.filter.voxel_grid",
-      "name": "VoxelGrid",
+      "name": "Source VoxelGrid",
       "properties": [
         {
           "name": "point_type",
@@ -36,17 +36,22 @@
         {
           "name": "leaf_x",
           "valueType": "double",
-          "value": 2.0
+          "value": 0.02
         },
         {
           "name": "leaf_y",
           "valueType": "double",
-          "value": 2.0
+          "value": 0.02
         },
         {
           "name": "leaf_z",
           "valueType": "double",
-          "value": 2.0
+          "value": 0.02
+        },
+        {
+          "name": "min_points",
+          "valueType": "int",
+          "value": 1
         }
       ],
       "inputs": [
@@ -56,19 +61,568 @@
         }
       ],
       "position": {
-        "x": 420.0,
-        "y": 160.0
+        "x": 360.0,
+        "y": 140.0
       }
     },
     {
       "id": 2,
-      "type": "pcl.io.writer",
-      "name": "Writer",
+      "type": "pcl.keypoints.iss_3d",
+      "name": "Source ISS3D",
+      "properties": [
+        {
+          "name": "salient_radius",
+          "valueType": "double",
+          "value": 0.1
+        },
+        {
+          "name": "non_max_radius",
+          "valueType": "double",
+          "value": 0.05
+        },
+        {
+          "name": "normal_radius",
+          "valueType": "double",
+          "value": 0.1
+        },
+        {
+          "name": "border_radius",
+          "valueType": "double",
+          "value": 0.05
+        },
+        {
+          "name": "gamma_21",
+          "valueType": "double",
+          "value": 0.975
+        },
+        {
+          "name": "gamma_32",
+          "valueType": "double",
+          "value": 0.975
+        },
+        {
+          "name": "min_neighbors",
+          "valueType": "int",
+          "value": 5
+        },
+        {
+          "name": "threads",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 640.0,
+        "y": 140.0
+      }
+    },
+    {
+      "id": 3,
+      "type": "pcl.features.normal_estimation",
+      "name": "Source Normals",
+      "properties": [
+        {
+          "name": "input_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "k_search",
+          "valueType": "int",
+          "value": 20
+        },
+        {
+          "name": "radius_search",
+          "valueType": "double",
+          "value": 0.0
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 920.0,
+        "y": 140.0
+      }
+    },
+    {
+      "id": 4,
+      "type": "pcl.tool.convert",
+      "name": "Source Normal Fields",
+      "properties": [
+        {
+          "name": "input_type",
+          "valueType": "int",
+          "value": 9
+        },
+        {
+          "name": "output_type",
+          "valueType": "int",
+          "value": 18
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 1200.0,
+        "y": 140.0
+      }
+    },
+    {
+      "id": 5,
+      "type": "pcl.features.fpfh",
+      "name": "Source FPFH",
+      "properties": [
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "k",
+          "valueType": "int",
+          "value": 10
+        },
+        {
+          "name": "nr_bins_f1",
+          "valueType": "int",
+          "value": 11
+        },
+        {
+          "name": "nr_bins_f2",
+          "valueType": "int",
+          "value": 11
+        },
+        {
+          "name": "nr_bins_f3",
+          "valueType": "int",
+          "value": 11
+        },
+        {
+          "name": "threads",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        },
+        {
+          "index": 1,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 1480.0,
+        "y": 140.0
+      }
+    },
+    {
+      "id": 6,
+      "type": "pcl.io.reader",
+      "name": "Target Reader",
       "properties": [
         {
           "name": "path",
           "valueType": "string",
-          "value": "out.pcd"
+          "value": "target.pcd"
+        },
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "inputs": [],
+      "position": {
+        "x": 80.0,
+        "y": 620.0
+      }
+    },
+    {
+      "id": 7,
+      "type": "pcl.filter.voxel_grid",
+      "name": "Target VoxelGrid",
+      "properties": [
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "leaf_x",
+          "valueType": "double",
+          "value": 0.02
+        },
+        {
+          "name": "leaf_y",
+          "valueType": "double",
+          "value": 0.02
+        },
+        {
+          "name": "leaf_z",
+          "valueType": "double",
+          "value": 0.02
+        },
+        {
+          "name": "min_points",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 360.0,
+        "y": 620.0
+      }
+    },
+    {
+      "id": 8,
+      "type": "pcl.keypoints.iss_3d",
+      "name": "Target ISS3D",
+      "properties": [
+        {
+          "name": "salient_radius",
+          "valueType": "double",
+          "value": 0.1
+        },
+        {
+          "name": "non_max_radius",
+          "valueType": "double",
+          "value": 0.05
+        },
+        {
+          "name": "normal_radius",
+          "valueType": "double",
+          "value": 0.1
+        },
+        {
+          "name": "border_radius",
+          "valueType": "double",
+          "value": 0.05
+        },
+        {
+          "name": "gamma_21",
+          "valueType": "double",
+          "value": 0.975
+        },
+        {
+          "name": "gamma_32",
+          "valueType": "double",
+          "value": 0.975
+        },
+        {
+          "name": "min_neighbors",
+          "valueType": "int",
+          "value": 5
+        },
+        {
+          "name": "threads",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 640.0,
+        "y": 620.0
+      }
+    },
+    {
+      "id": 9,
+      "type": "pcl.features.normal_estimation",
+      "name": "Target Normals",
+      "properties": [
+        {
+          "name": "input_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "k_search",
+          "valueType": "int",
+          "value": 20
+        },
+        {
+          "name": "radius_search",
+          "valueType": "double",
+          "value": 0.0
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 920.0,
+        "y": 620.0
+      }
+    },
+    {
+      "id": 10,
+      "type": "pcl.tool.convert",
+      "name": "Target Normal Fields",
+      "properties": [
+        {
+          "name": "input_type",
+          "valueType": "int",
+          "value": 9
+        },
+        {
+          "name": "output_type",
+          "valueType": "int",
+          "value": 18
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 1200.0,
+        "y": 620.0
+      }
+    },
+    {
+      "id": 11,
+      "type": "pcl.features.fpfh",
+      "name": "Target FPFH",
+      "properties": [
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "k",
+          "valueType": "int",
+          "value": 10
+        },
+        {
+          "name": "nr_bins_f1",
+          "valueType": "int",
+          "value": 11
+        },
+        {
+          "name": "nr_bins_f2",
+          "valueType": "int",
+          "value": 11
+        },
+        {
+          "name": "nr_bins_f3",
+          "valueType": "int",
+          "value": 11
+        },
+        {
+          "name": "threads",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        },
+        {
+          "index": 1,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 1480.0,
+        "y": 620.0
+      }
+    },
+    {
+      "id": 12,
+      "type": "pcl.registration.sac_ia",
+      "name": "SAC-IA Pose",
+      "properties": [
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "transform_estimation",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "max_iterations",
+          "valueType": "int",
+          "value": 1000
+        },
+        {
+          "name": "min_sample_distance",
+          "valueType": "double",
+          "value": 0.05
+        },
+        {
+          "name": "nr_samples",
+          "valueType": "int",
+          "value": 3
+        },
+        {
+          "name": "k_correspondences",
+          "valueType": "int",
+          "value": 5
+        },
+        {
+          "name": "error_functor",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "error_threshold",
+          "valueType": "double",
+          "value": 100.0
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        },
+        {
+          "index": 1,
+          "presentation": "port"
+        },
+        {
+          "index": 2,
+          "presentation": "port"
+        },
+        {
+          "index": 3,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 1840.0,
+        "y": 380.0
+      }
+    },
+    {
+      "id": 13,
+      "type": "pcl.tool.transform_point_cloud",
+      "name": "Apply Pose",
+      "properties": [
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        },
+        {
+          "index": 1,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 2180.0,
+        "y": 380.0
+      }
+    },
+    {
+      "id": 14,
+      "type": "pcl.registration.icp_point_to_point",
+      "name": "ICP Refine",
+      "properties": [
+        {
+          "name": "point_type",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "name": "max_iterations",
+          "valueType": "int",
+          "value": 100
+        },
+        {
+          "name": "max_correspondence_distance",
+          "valueType": "double",
+          "value": 0.05
+        },
+        {
+          "name": "transformation_epsilon",
+          "valueType": "double",
+          "value": 1e-08
+        },
+        {
+          "name": "euclidean_fitness_epsilon",
+          "valueType": "double",
+          "value": 1e-06
+        },
+        {
+          "name": "use_reciprocal_correspondence",
+          "valueType": "bool",
+          "value": false
+        },
+        {
+          "name": "threads",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        },
+        {
+          "index": 1,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 2520.0,
+        "y": 380.0
+      }
+    },
+    {
+      "id": 15,
+      "type": "pcl.io.writer",
+      "name": "Aligned Writer",
+      "properties": [
+        {
+          "name": "path",
+          "valueType": "string",
+          "value": "aligned.pcd"
         },
         {
           "name": "format",
@@ -88,8 +642,8 @@
         }
       ],
       "position": {
-        "x": 760.0,
-        "y": 160.0
+        "x": 2860.0,
+        "y": 380.0
       }
     }
   ],
@@ -104,6 +658,120 @@
       "from": 1,
       "out": 0,
       "to": 2,
+      "in": 0
+    },
+    {
+      "from": 2,
+      "out": 0,
+      "to": 3,
+      "in": 0
+    },
+    {
+      "from": 3,
+      "out": 0,
+      "to": 4,
+      "in": 0
+    },
+    {
+      "from": 2,
+      "out": 0,
+      "to": 5,
+      "in": 0
+    },
+    {
+      "from": 4,
+      "out": 0,
+      "to": 5,
+      "in": 1
+    },
+    {
+      "from": 6,
+      "out": 0,
+      "to": 7,
+      "in": 0
+    },
+    {
+      "from": 7,
+      "out": 0,
+      "to": 8,
+      "in": 0
+    },
+    {
+      "from": 8,
+      "out": 0,
+      "to": 9,
+      "in": 0
+    },
+    {
+      "from": 9,
+      "out": 0,
+      "to": 10,
+      "in": 0
+    },
+    {
+      "from": 8,
+      "out": 0,
+      "to": 11,
+      "in": 0
+    },
+    {
+      "from": 10,
+      "out": 0,
+      "to": 11,
+      "in": 1
+    },
+    {
+      "from": 2,
+      "out": 0,
+      "to": 12,
+      "in": 0
+    },
+    {
+      "from": 5,
+      "out": 0,
+      "to": 12,
+      "in": 1
+    },
+    {
+      "from": 8,
+      "out": 0,
+      "to": 12,
+      "in": 2
+    },
+    {
+      "from": 11,
+      "out": 0,
+      "to": 12,
+      "in": 3
+    },
+    {
+      "from": 1,
+      "out": 0,
+      "to": 13,
+      "in": 0
+    },
+    {
+      "from": 12,
+      "out": 1,
+      "to": 13,
+      "in": 1
+    },
+    {
+      "from": 13,
+      "out": 0,
+      "to": 14,
+      "in": 0
+    },
+    {
+      "from": 7,
+      "out": 0,
+      "to": 14,
+      "in": 1
+    },
+    {
+      "from": 14,
+      "out": 0,
+      "to": 15,
       "in": 0
     }
   ]

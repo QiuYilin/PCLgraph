@@ -79,7 +79,9 @@ Writer 需要选一个与上游一致的 `input_type`。类型选择器（`point
 # 示例
 
 - `pclgraph-core-example`：代码搭 Reader→VoxelGrid→Writer，在临时目录生成点云并打印下采样前后的点数。
-- `pclgraph-ui-example`：taskgraph ImGui 工作台，加载 `examples/ui/demo-project`；`--check` 可在不开窗口的情况下验证工程能载入、跑通，并打印各节点点云的可显示点数。
+- `pclgraph-ui-example`：taskgraph ImGui 工作台，加载 `examples/ui/demo-project`；示例图是完整配准流程 `Reader → VoxelGrid → ISS3D → NormalEstimation → Convert → FPFH → SAC-IA → Transform → ICP → Writer`；`--check` 不开窗口验证工程能载入、跑通，并检查关键点数量和最终对齐的最近邻误差。
+
+示例点云不提交到仓库：CMake 默认从 PCL 1.15.1 官方样例下载 `chef.pcd`（固定 SHA256）到构建目录，也可用 `-DPCLGRAPH_DEMO_PCD=<本地 chef.pcd>` 覆盖。程序启动时把样例归一化，并在 exe 旁生成 `source.pcd` / `target.pcd`；target 是 source 的已知刚体变换，用于校验配准误差。该流程是 PCL 官方 `template_alignment` 的关键点变体：官方样例不使用 ISS 关键点，FPFH 直接在下采样点云上计算。
 
 **Point Cloud** 是独立的浮动窗口，不占 Output 面板：首次运行自动打开，位置可拖、可停靠；关闭后从标题栏 **View → Point Cloud** 重新打开，开关状态写进 taskgraph 会话。选中带点云输出的节点并 **Run Graph** 后，窗口默认跟随画布选中节点显示三维点云；取消 **Follow Selection** 或直接改下拉框可锁定到某个节点输出，方便当常驻视图用。VTK 要求 OpenGL 3.2，因此 taskgraph 的 ImGui 窗口上下文已升到 3.2 core。该视图依赖本地 taskgraph 源码新增的 `Ui::SelectedNode()`，发布版 taskgraph 要等 0.3.0 之后才能走注册表。
 

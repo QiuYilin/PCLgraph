@@ -79,7 +79,9 @@ Point types are no longer hand-written: the supported XYZ types follow the insta
 # Examples
 
 - `pclgraph-core-example`: builds Reader → VoxelGrid → Writer in code, writes a temporary cloud, and prints the point counts before and after downsampling.
-- `pclgraph-ui-example`: taskgraph ImGui workbench that opens `examples/ui/demo-project`; `--check` validates that the project loads and runs without opening a window, and prints the displayable point count of each cloud output.
+- `pclgraph-ui-example`: taskgraph ImGui workbench that opens `examples/ui/demo-project`; the demo graph is a full registration pipeline `Reader → VoxelGrid → ISS3D → NormalEstimation → Convert → FPFH → SAC-IA → Transform → ICP → Writer`; `--check` validates that the project loads and runs without opening a window, and also checks the keypoint count and final nearest-neighbor alignment error.
+
+The sample cloud is not committed: CMake downloads PCL 1.15.1's `chef.pcd` (pinned SHA256) into the build tree by default, or use `-DPCLGRAPH_DEMO_PCD=<local chef.pcd>`. At startup the example normalizes the sample and writes `source.pcd` / `target.pcd` next to the executable; the target is a known rigid transform of the source, used to verify the registration error. This is a keypoint variant of PCL's official `template_alignment`: the official sample does not use ISS keypoints and computes FPFH on the downsampled cloud directly.
 
 **Point Cloud** is an independent floating window, not part of the Output panel: it opens automatically on first run, can be moved or docked, and reopens from the title-bar **View → Point Cloud** menu after closing. Its open/closed state is stored in the taskgraph session. Select a node with a cloud output and press **Run Graph**: the window follows the canvas selection by default; clear **Follow Selection** or pick an entry from the dropdown to pin one node output for use as a resident view. VTK requires OpenGL 3.2, so the taskgraph ImGui window context has been raised to 3.2 core. The view depends on the new `Ui::SelectedNode()` in the local taskgraph source; the registry taskgraph can only ship it after 0.3.0.
 

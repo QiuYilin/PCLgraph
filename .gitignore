@@ -13,3 +13,7 @@ vcpkg_installed/
 CMakeUserPresets.json
 out/
 logs/
+examples/ui/demo-project/chef.pcd
+examples/ui/demo-project/source.pcd
+examples/ui/demo-project/target.pcd
+examples/ui/demo-project/aligned.pcd
