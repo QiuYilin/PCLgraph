@@ -4,8 +4,11 @@
 
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <system_error>
+
+#include "point_cloud_view.hpp"
 
 namespace {
 
@@ -22,6 +25,39 @@ std::filesystem::path ExecutableDirectory(const char* argv0) {
     return std::filesystem::current_path(error);
   }
   return absolute.parent_path();
+}
+
+// --check 不开窗时也走一遍点云到 VTK 的转换，确认数据链路可显示。
+void PrintComputedClouds(tg::Controller& project) {
+  for (const auto& graph : project.getGraphs()) {
+    if (graph == nullptr) {
+      continue;
+    }
+    for (const auto& node : graph->getNodes()) {
+      if (node == nullptr) {
+        continue;
+      }
+      for (unsigned int port = 0; port < node->outputPortCount(); ++port) {
+        const auto cloud = std::dynamic_pointer_cast<pg::CloudData>(
+            node->getOutPortData(port));
+        if (cloud == nullptr || cloud->desc() == nullptr ||
+            cloud->cloud() == nullptr) {
+          continue;
+        }
+        const PointCloudActorResult result = BuildPointCloudActor(*cloud);
+        if (result.actor == nullptr) {
+          continue;
+        }
+        const char* caption =
+            node->fixedPortCaption(tg::PortType::Out, port);
+        std::cout << "cloud: " << graph->getName() << " / " << node->getName()
+                  << " / "
+                  << (caption != nullptr && caption[0] != '\0' ? caption
+                                                               : "cloud")
+                  << " points=" << result.point_count << '\n';
+      }
+    }
+  }
 }
 
 }  // namespace
@@ -48,6 +84,7 @@ int main(int argc, char** argv) {
         return 1;
       }
     }
+    PrintComputedClouds(project);
     const auto output = demo_root / "out.pcd";
     std::cout << "output: " << output.string()
               << " (exists=" << std::filesystem::exists(output) << ")\n";
@@ -55,6 +92,10 @@ int main(int argc, char** argv) {
   }
 
   Ui ui(project);
+  // 视图存进 Ui 后由 ViewWindow 的 shared_ptr 持有，随 Ui 在 GL 上下文之前析构。
+  auto point_cloud = std::make_shared<PointCloudPanel>(
+      project, [&ui] { return ui.SelectedNode(); });
+  ui.AddViewWindow(point_cloud->MakeViewWindow());
   ui.Run();
   return 0;
 }

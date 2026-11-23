@@ -6,14 +6,14 @@
 
 # 依赖
 
-C++17。依赖用 [vcpkg](https://github.com/microsoft/vcpkg) 管理，自定义端口来自个人注册表 [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry)。开发期 taskgraph 直接链接本地源码 `C:\Users\qiuyi\program\taskgraph`（0.3.0 基础层，尚未发布），不经过 vcpkg；taskflow 须为 **3.11.0**（最后一个可按 C++17 编译的版本，builtin 默认已是 4.x）。PCL 用 vcpkg 的 `pcl` port（Boost 为其传递依赖），测试用 `gtest`。
+C++17。依赖用 [vcpkg](https://github.com/microsoft/vcpkg) 管理，自定义端口来自个人注册表 [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry)。开发期 taskgraph 直接链接本地源码 `C:\Users\qiuyi\program\taskgraph`（0.3.0 基础层，尚未发布），不经过 vcpkg；taskflow 须为 **3.11.0**（最后一个可按 C++17 编译的版本，builtin 默认已是 4.x）。PCL 用 vcpkg 的 `pcl` port（Boost 为其传递依赖），测试用 `gtest`。UI 的三维点云视图用注册表里的 `imgui-vtk`，由它传递引入 VTK 9、gl3w 和 glfw3。
 
 ## 全局模式
 
 把 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) 里的 `registries` 放进 vcpkg 根目录的 `vcpkg-configuration.json`，并补上 `default-registry`，把它的 `baseline` 写成这份 vcpkg 检出的提交。`taskflow` 从个人注册表解析，其余端口仍来自这份检出；taskgraph 不由 vcpkg 安装。
 
 ```powershell
-vcpkg install taskflow spdlog nlohmann-json pcl gtest
+vcpkg install taskflow spdlog nlohmann-json pcl gtest imgui-vtk
 ```
 
 装进 `C:\vcpkg\installed`。
@@ -22,7 +22,7 @@ vcpkg install taskflow spdlog nlohmann-json pcl gtest
 
 ## 清单模式
 
-使用 [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) 和 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json)；这两份也是将来 CI 复用的文件，装 `taskflow`、`spdlog`、`nlohmann-json`、`pcl`、`gtest`，taskgraph 仍由源码链接。在仓库根目录执行：
+使用 [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) 和 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json)；这两份也是将来 CI 复用的文件，装 `taskflow`、`spdlog`、`nlohmann-json`、`pcl`、`gtest`、`imgui-vtk`，taskgraph 仍由源码链接。在仓库根目录执行：
 
 ```powershell
 C:\vcpkg\vcpkg.exe install --x-manifest-root=.github/manifest --triplet x64-windows
@@ -79,7 +79,9 @@ Writer 需要选一个与上游一致的 `input_type`。类型选择器（`point
 # 示例
 
 - `pclgraph-core-example`：代码搭 Reader→VoxelGrid→Writer，在临时目录生成点云并打印下采样前后的点数。
-- `pclgraph-ui-example`：taskgraph ImGui 工作台，加载 `examples/ui/demo-project`；`--check` 可在不开窗口的情况下验证工程能载入并跑通。
+- `pclgraph-ui-example`：taskgraph ImGui 工作台，加载 `examples/ui/demo-project`；`--check` 可在不开窗口的情况下验证工程能载入、跑通，并打印各节点点云的可显示点数。
+
+**Point Cloud** 是独立的浮动窗口，不占 Output 面板：首次运行自动打开，位置可拖、可停靠；关闭后从标题栏 **View → Point Cloud** 重新打开，开关状态写进 taskgraph 会话。选中带点云输出的节点并 **Run Graph** 后，窗口默认跟随画布选中节点显示三维点云；取消 **Follow Selection** 或直接改下拉框可锁定到某个节点输出，方便当常驻视图用。VTK 要求 OpenGL 3.2，因此 taskgraph 的 ImGui 窗口上下文已升到 3.2 core。该视图依赖本地 taskgraph 源码新增的 `Ui::SelectedNode()`，发布版 taskgraph 要等 0.3.0 之后才能走注册表。
 
 本地预设 `vs-2026-amd64-local` 已设 `PCLGRAPH_TASKGRAPH_UI=imgui`，会同时构建两个示例。
 

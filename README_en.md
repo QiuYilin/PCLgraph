@@ -6,14 +6,14 @@ The repository is named PCLgraph; the CMake package and vcpkg port are `pclgraph
 
 # Dependencies
 
-C++17. Dependencies are managed with [vcpkg](https://github.com/microsoft/vcpkg), and custom ports come from the personal registry [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry). During development taskgraph links against the local source tree `C:\Users\qiuyi\program\taskgraph` (0.3.0 foundation, not released yet) instead of vcpkg; taskflow must be **3.11.0** (the last release that builds as C++17; the builtin registry already defaults to 4.x). PCL comes from the vcpkg `pcl` port (Boost is transitive), and tests use `gtest`.
+C++17. Dependencies are managed with [vcpkg](https://github.com/microsoft/vcpkg), and custom ports come from the personal registry [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry). During development taskgraph links against the local source tree `C:\Users\qiuyi\program\taskgraph` (0.3.0 foundation, not released yet) instead of vcpkg; taskflow must be **3.11.0** (the last release that builds as C++17; the builtin registry already defaults to 4.x). PCL comes from the vcpkg `pcl` port (Boost is transitive), and tests use `gtest`. The UI's 3D point-cloud view uses `imgui-vtk` from the registry, which brings VTK 9, gl3w, and glfw3 transitively.
 
 ## Classic mode
 
 Copy the `registries` entry from [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) into `vcpkg-configuration.json` at the vcpkg root, add `default-registry`, and set its `baseline` to the commit of that vcpkg checkout. `taskflow` resolves from the personal registry; other ports stay on that checkout, and taskgraph is not installed by vcpkg.
 
 ```powershell
-vcpkg install taskflow spdlog nlohmann-json pcl gtest
+vcpkg install taskflow spdlog nlohmann-json pcl gtest imgui-vtk
 ```
 
 Packages install into `C:\vcpkg\installed`.
@@ -22,7 +22,7 @@ CMake links the local taskgraph through `PCLGRAPH_TASKGRAPH_DIR`; the machine-sp
 
 ## Manifest mode
 
-Use [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) and [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json); these are also the files CI will reuse, installing `taskflow`, `spdlog`, `nlohmann-json`, `pcl`, and `gtest` while taskgraph still comes from source. From the repository root:
+Use [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) and [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json); these are also the files CI will reuse, installing `taskflow`, `spdlog`, `nlohmann-json`, `pcl`, `gtest`, and `imgui-vtk` while taskgraph still comes from source. From the repository root:
 
 ```powershell
 C:\vcpkg\vcpkg.exe install --x-manifest-root=.github/manifest --triplet x64-windows
@@ -79,7 +79,9 @@ Point types are no longer hand-written: the supported XYZ types follow the insta
 # Examples
 
 - `pclgraph-core-example`: builds Reader → VoxelGrid → Writer in code, writes a temporary cloud, and prints the point counts before and after downsampling.
-- `pclgraph-ui-example`: taskgraph ImGui workbench that opens `examples/ui/demo-project`; `--check` validates that the project loads and runs without opening a window.
+- `pclgraph-ui-example`: taskgraph ImGui workbench that opens `examples/ui/demo-project`; `--check` validates that the project loads and runs without opening a window, and prints the displayable point count of each cloud output.
+
+**Point Cloud** is an independent floating window, not part of the Output panel: it opens automatically on first run, can be moved or docked, and reopens from the title-bar **View → Point Cloud** menu after closing. Its open/closed state is stored in the taskgraph session. Select a node with a cloud output and press **Run Graph**: the window follows the canvas selection by default; clear **Follow Selection** or pick an entry from the dropdown to pin one node output for use as a resident view. VTK requires OpenGL 3.2, so the taskgraph ImGui window context has been raised to 3.2 core. The view depends on the new `Ui::SelectedNode()` in the local taskgraph source; the registry taskgraph can only ship it after 0.3.0.
 
 The local `vs-2026-amd64-local` preset sets `PCLGRAPH_TASKGRAPH_UI=imgui`, so both examples are built.
 
