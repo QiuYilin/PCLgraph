@@ -85,6 +85,8 @@ The sample cloud is not committed: CMake downloads PCL 1.15.1's `chef.pcd` (pinn
 
 **Point Cloud** is an independent floating window, not part of the Output panel: it opens automatically on first run, can be moved or docked, and reopens from the title-bar **View → Point Cloud** menu after closing. Its open/closed state is stored in the taskgraph session. Select a node with a cloud output and press **Run Graph**: the window follows the canvas selection by default; clear **Follow Selection** or pick an entry from the dropdown to pin one node output for use as a resident view. VTK requires OpenGL 3.2, so the taskgraph ImGui window context has been raised to 3.2 core. The view depends on the new `Ui::SelectedNode()` in the local taskgraph source; the registry taskgraph can only ship it after 0.3.0.
 
+The **Output** view in the panel gets its Detail preset and category toggles from taskgraph; PCLgraph implements `debugSummary()` for `CloudData` / `TransformData`, so Summary shows the point type, point count, organized size and fields (for example `PointXYZ(3133 pts, unorganized, fields=xyz)`), plus the translation, angle and axis of a Transform. The summaries read metadata only; they never scan points or serialize a cloud.
+
 The local `vs-2026-amd64-local` preset sets `PCLGRAPH_TASKGRAPH_UI=imgui`, so both examples are built.
 
 # Goals

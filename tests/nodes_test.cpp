@@ -9,7 +9,9 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
+#include <Eigen/Geometry>
 #include <pcl/io/pcd_io.h>
 #include <pclgraph/algorithm_registry.hpp>
 #include <pclgraph/nodes/node_categories.hpp>
@@ -19,6 +21,7 @@
 #include <taskgraph/Controller.hpp>
 #include <taskgraph/Error.hpp>
 #include <taskgraph/Graph.hpp>
+#include <taskgraph/Log.hpp>
 
 namespace {
 
@@ -135,6 +138,34 @@ int AlgorithmTypeIndex(std::string_view algo_id, std::string_view type_id) {
     }
   }
   return -1;
+}
+
+const tg::LogRecord* FindLogRecord(const std::vector<tg::LogRecord>& records,
+                                   tg::LogCategory category,
+                                   std::string_view needle) {
+  for (const auto& record : records) {
+    if (record.category == category &&
+        record.text.find(needle) != std::string::npos) {
+      return &record;
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> MakeOrganizedXyzCloud() {
+  constexpr int kOrganizedSize = 4;
+  auto cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  cloud->width = kOrganizedSize;
+  cloud->height = kOrganizedSize;
+  cloud->is_dense = true;
+  cloud->resize(kOrganizedSize * kOrganizedSize);
+  for (int y = 0; y < kOrganizedSize; ++y) {
+    for (int x = 0; x < kOrganizedSize; ++x) {
+      cloud->at(x, y) = pcl::PointXYZ{static_cast<float>(x),
+                                      static_cast<float>(y), 0.0f};
+    }
+  }
+  return cloud;
 }
 
 class NodesTest : public ::testing::Test {
@@ -910,6 +941,86 @@ TEST(TransformData, ExposesTypeAndMatrix) {
   matrix(0, 3) = 0.5f;
   data.setMatrix(matrix);
   EXPECT_FLOAT_EQ(data.matrix()(0, 3), 0.5f);
+}
+
+TEST(TransformData, SummarizesTranslationAndRotation) {
+  constexpr float kHalfTurn = 3.14159265358979323846f / 2.0f;
+  Eigen::Matrix4f matrix = Eigen::Matrix4f::Identity();
+  matrix.block<3, 1>(0, 3) << 0.1f, -0.06f, 0.08f;
+  matrix.block<3, 3>(0, 0) =
+      Eigen::AngleAxisf(kHalfTurn, Eigen::Vector3f::UnitZ()).toRotationMatrix();
+
+  const pg::TransformData data(matrix);
+  const std::string text = data.debugSummary();
+  EXPECT_NE(text.find("t=(0.10,-0.06,0.08)"), std::string::npos) << text;
+  EXPECT_NE(text.find("angle=90.0deg"), std::string::npos) << text;
+  EXPECT_NE(text.find("axis=("), std::string::npos) << text;
+}
+
+TEST(PointTypeRegistry, RegistersSummaryForEveryType) {
+  for (const auto& desc : pg::PointTypeRegistry::Instance().All()) {
+    EXPECT_FALSE(desc.display_name.empty()) << desc.id;
+    EXPECT_NE(desc.summary, nullptr) << desc.id;
+  }
+}
+
+TEST(CloudDataSummary, ReportsPointsAndFields) {
+  const auto xyz = MakeXyzData();
+  EXPECT_EQ(xyz->pointCount(), 12u);
+  const std::string xyz_text = xyz->debugSummary();
+  EXPECT_NE(xyz_text.find("PointXYZ"), std::string::npos) << xyz_text;
+  EXPECT_NE(xyz_text.find("12 pts"), std::string::npos) << xyz_text;
+  EXPECT_NE(xyz_text.find("unorganized"), std::string::npos) << xyz_text;
+  EXPECT_NE(xyz_text.find("fields=xyz"), std::string::npos) << xyz_text;
+
+  const auto normals = MakeNormalData(12);
+  EXPECT_EQ(normals->pointCount(), 12u);
+  const std::string normal_text = normals->debugSummary();
+  EXPECT_NE(normal_text.find("12 pts"), std::string::npos) << normal_text;
+  EXPECT_NE(normal_text.find("normal"), std::string::npos) << normal_text;
+  EXPECT_NE(normal_text.find("curvature"), std::string::npos) << normal_text;
+
+  const auto fpfh = MakeFpfhData(7);
+  EXPECT_EQ(fpfh->pointCount(), 7u);
+  const std::string fpfh_text = fpfh->debugSummary();
+  EXPECT_NE(fpfh_text.find("FPFHSignature33"), std::string::npos) << fpfh_text;
+  EXPECT_NE(fpfh_text.find("7 features"), std::string::npos) << fpfh_text;
+  EXPECT_NE(fpfh_text.find("fields=fpfh33"), std::string::npos) << fpfh_text;
+}
+
+TEST(CloudDataSummary, ReportsOrganizedGrid) {
+  const auto organized = MakeCloudData(MakeOrganizedXyzCloud());
+  EXPECT_EQ(organized->pointCount(), 16u);
+  const std::string text = organized->debugSummary();
+  EXPECT_NE(text.find("16 pts"), std::string::npos) << text;
+  EXPECT_NE(text.find("organized 4x4"), std::string::npos) << text;
+}
+
+TEST_F(NodesTest, ComputeAndUpdateDataLogsCloudSummary) {
+  tg::clearLogRecords();
+  tg::SetLogConfig(tg::LogConfig{tg::LogLevel::Info, tg::kAllLogCategories});
+
+  pg::VoxelGridNode grid;
+  ASSERT_TRUE(SetProp(grid, "leaf_x", 2.0));
+  ASSERT_TRUE(SetProp(grid, "leaf_y", 2.0));
+  ASSERT_TRUE(SetProp(grid, "leaf_z", 2.0));
+  const auto input = MakeXyzData();
+  grid.setInPortData(0, input);
+  grid.computeAndUpdateData();
+
+  std::vector<tg::LogRecord> records;
+  tg::copyLogRecordsSince(0, records);
+  tg::SetLogConfig(tg::LogConfig{});
+  tg::clearLogRecords();
+
+  EXPECT_NE(
+      FindLogRecord(records, tg::LogCategory::Data, "property 'leaf_x'="),
+      nullptr);
+  const tg::LogRecord* output =
+      FindLogRecord(records, tg::LogCategory::Data, "out[0]");
+  ASSERT_NE(output, nullptr);
+  EXPECT_NE(output->text.find("PointXYZ("), std::string::npos) << output->text;
+  EXPECT_NE(FindLogRecord(records, tg::LogCategory::Timing, "took"), nullptr);
 }
 
 TEST_F(NodesTest, IcpRecoversTranslation) {

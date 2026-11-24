@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -67,6 +68,17 @@ inline constexpr char kPointTypeDem[] = "dem";
 inline constexpr char kPointTypeNormal[] = "normal";
 inline constexpr char kPointTypeFpfhSignature33[] = "fpfh_signature33";
 
+/** \brief 点云形状摘要；只含元数据，不按点数分配。 */
+struct PointCloudShape {
+  std::size_t points = 0;
+  std::size_t width = 0;
+  std::size_t height = 0;
+};
+
+/** \brief 从类型擦除句柄读取形状；实现必须线程安全、无副作用。 */
+using PointCloudShapeFn =
+    PointCloudShape (*)(const std::shared_ptr<const void>&);
+
 /** \brief 一个已注册点类型的运行时描述；地址在注册表中稳定。 */
 struct PointTypeDesc {
   std::string id;
@@ -78,6 +90,7 @@ struct PointTypeDesc {
                     pcl::PCLPointCloud2&) = nullptr;
   std::shared_ptr<const void> (*from_cloud2)(const pcl::PCLPointCloud2&) =
       nullptr;
+  PointCloudShapeFn summary = nullptr;
 };
 
 /** \brief 编译期点类型到运行时 id 的映射；未特化的类型 id 为空。 */
@@ -300,10 +313,23 @@ std::shared_ptr<const void> FromCloud2(const pcl::PCLPointCloud2& in) {
 }
 
 template <typename PointT>
+PointCloudShape SummarizeCloud(const std::shared_ptr<const void>& cloud) {
+  const auto* typed =
+      static_cast<const pcl::PointCloud<PointT>*>(cloud.get());
+  if (typed == nullptr) {
+    return {};
+  }
+  return {static_cast<std::size_t>(typed->size()),
+          static_cast<std::size_t>(typed->width),
+          static_cast<std::size_t>(typed->height)};
+}
+
+template <typename PointT>
 PointTypeDesc MakePointTypeDesc(std::string id, std::string display_name) {
   return PointTypeDesc{std::move(id), std::move(display_name),
                        FieldsOf<PointT>(), &CloneCloud<PointT>,
-                       &ToCloud2<PointT>, &FromCloud2<PointT>};
+                       &ToCloud2<PointT>, &FromCloud2<PointT>,
+                       &SummarizeCloud<PointT>};
 }
 
 /** \brief 运行时点类型注册表；首次访问时注册内置类型。 */
@@ -340,6 +366,12 @@ class CloudData final : public tg::NodeData {
 
   const PointTypeDesc* desc() const { return _desc; }
   const std::shared_ptr<const void>& cloud() const { return _cloud; }
+
+  /** \brief 点数；无描述或缺形状函数时返回 0。 */
+  std::size_t pointCount() const;
+
+  /** \brief 日志用摘要：类型名、点数、organized 尺寸、字段。只读元数据。 */
+  std::string debugSummary() const override;
 
   /** \brief 按具体点类型查分派表；未实例化时抛 tg::NodeError。 */
   std::shared_ptr<CloudData> dispatch(std::string_view algo_id,

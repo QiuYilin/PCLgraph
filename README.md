@@ -85,6 +85,8 @@ Writer 需要选一个与上游一致的 `input_type`。类型选择器（`point
 
 **Point Cloud** 是独立的浮动窗口，不占 Output 面板：首次运行自动打开，位置可拖、可停靠；关闭后从标题栏 **View → Point Cloud** 重新打开，开关状态写进 taskgraph 会话。选中带点云输出的节点并 **Run Graph** 后，窗口默认跟随画布选中节点显示三维点云；取消 **Follow Selection** 或直接改下拉框可锁定到某个节点输出，方便当常驻视图用。VTK 要求 OpenGL 3.2，因此 taskgraph 的 ImGui 窗口上下文已升到 3.2 core。该视图依赖本地 taskgraph 源码新增的 `Ui::SelectedNode()`，发布版 taskgraph 要等 0.3.0 之后才能走注册表。
 
+面板里的 **Output** 视图，其 Detail 预设与类别开关由 taskgraph 提供；PCLgraph 为 `CloudData` / `TransformData` 实现 `debugSummary()`，所以 Summary 下能看到点云类型、点数、organized 尺寸与字段（如 `PointXYZ(3133 pts, unorganized, fields=xyz)`），以及 Transform 的平移、角度和轴。摘要只读元数据，不逐点统计，也不序列化点云。
+
 本地预设 `vs-2026-amd64-local` 已设 `PCLGRAPH_TASKGRAPH_UI=imgui`，会同时构建两个示例。
 
 # 预期目标

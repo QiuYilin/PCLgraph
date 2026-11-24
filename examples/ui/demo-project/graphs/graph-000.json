@@ -1,5 +1,5 @@
 {
-  "name": "IO -> Filter -> Keypoints -> FPFH -> SAC-IA -> ICP",
+  "name": "Point Cloud Registration",
   "nodes": [
     {
       "id": 0,
