@@ -3,7 +3,7 @@
     {
       "kind": "git",
       "repository": "https://github.com/QiuYilin/vcpkg-registry",
-      "baseline": "dabd18edc1bbfd73516a2b3ce2db36e5ad5c6e57",
+      "baseline": "05ef3e6dc36f4297e33fde8a70c51d03c6a7d211",
       "packages": ["imgui-vtk", "taskflow", "taskgraph"]
     }
   ]

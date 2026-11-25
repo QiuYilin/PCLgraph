@@ -1,0 +1,32 @@
+# Doxygen configuration for the PCLgraph public API.
+# CMake's configure_file fills the @VAR@ placeholders; output, version, and
+# input paths all come from the build.
+
+PROJECT_NAME           = pclgraph
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "PCL dataflow nodes on taskgraph"
+
+OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
+
+# Public headers are in include/pclgraph; the custom-node example is included
+# so its node class shows up in the API docs.
+INPUT                  = @DOXYGEN_INPUT@
+
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.h *.cpp
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+HTML_OUTPUT            = html
+
+ENABLE_PREPROCESSING   = YES
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

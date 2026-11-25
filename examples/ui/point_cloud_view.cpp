@@ -9,7 +9,6 @@
 #include <cstring>
 #include <exception>
 #include <string>
-#include <utility>
 
 #include <pcl/PCLPointCloud2.h>
 
@@ -24,42 +23,36 @@
 #include <vtkUnsignedCharArray.h>
 #include <vtkVertexGlyphFilter.h>
 
+#include <ThemeStyle.hpp>
+#include <UiWidgets.hpp>
 #include <WorkbenchParts.hpp>
-#include <taskgraph/Controller.hpp>
-#include <taskgraph/Graph.hpp>
 
 #include "pclgraph/point_type.hpp"
 
 namespace {
 
-constexpr const char* kViewWindowId = "point-cloud";
-constexpr const char* kViewWindowTitle = "Point Cloud";
-constexpr bool kViewWindowOpenOnFirstRun = true;
+constexpr const char* kMonitorViewId = "point-cloud";
+constexpr const char* kMonitorViewTitle = "Point Cloud";
+constexpr bool kMonitorOpenOnFirstRun = false;
 
-constexpr const char* kFollowSelectionLabel = "Follow Selection";
-constexpr const char* kSourceComboId = "##PointCloudSource";
 constexpr const char* kFitLabel = "Fit";
+constexpr const char* kMoreActionsLabel = "...";
+constexpr const char* kViewOptionsTooltip = "View Options";
+constexpr const char* kViewOptionsPopupId = "##PointCloudViewOptions";
 constexpr const char* kPointSizeLabel = "Point Size";
-constexpr const char* kNoPointCloudHint =
-    "Run the graph to compute a point cloud.";
-constexpr const char* kNoSelectedNodeHint = "No node selected.";
-constexpr const char* kNoPinnedNodeHint = "No node pinned.";
-constexpr const char* kSelectedNodeNoCloudHint =
-    "Selected node has no point cloud output.";
-constexpr const char* kPinnedNodeNoCloudHint =
-    "Pinned node has no point cloud output.";
 constexpr const char* kBuildFailedHint = "Failed to build the point cloud.";
 constexpr const char* kLoaderFailedHint =
     "OpenGL loader (gl3w) failed; the VTK view cannot start.";
-constexpr const char* kFallbackPortCaption = "cloud";
 
-constexpr float kSourceComboWidthEpx = 360.0f;
 constexpr float kPointSizeSliderWidthEpx = 140.0f;
 constexpr float kDefaultPointSize = 2.0f;
 constexpr float kMinPointSize = 1.0f;
 constexpr float kMaxPointSize = 10.0f;
 constexpr float kMinViewportHeightEpx = 48.0f;
 constexpr const char* kPointSizeFormat = "%.1f";
+
+constexpr WidgetMetrics kToolbarTextMetrics{kOutputControlHeightRatio, 0.0f,
+                                             false};
 
 constexpr double kViewerBackground = 0.18;
 constexpr double kViewerBackgroundAlpha = 1.0;
@@ -75,6 +68,12 @@ bool HasXyzFields(const pg::PointTypeDesc& desc) {
   const pg::PointFields xyz =
       pg::kFieldX | pg::kFieldY | pg::kFieldZ;
   return (desc.fields & xyz) == xyz;
+}
+
+bool AcceptsPointCloud(const tg::NodeData& data) {
+  const auto* cloud = dynamic_cast<const pg::CloudData*>(&data);
+  return cloud != nullptr && cloud->desc() != nullptr &&
+         cloud->cloud() != nullptr && HasXyzFields(*cloud->desc());
 }
 
 const pcl::PCLPointField* FindField(const pcl::PCLPointCloud2& blob,
@@ -247,188 +246,89 @@ PointCloudActorResult BuildPointCloudActor(const pg::CloudData& cloud) {
   return result;
 }
 
-PointCloudPanel::PointCloudPanel(tg::Controller& controller,
-                                 SelectionProvider selected_node)
-    : _controller(controller),
-      _selected_node(std::move(selected_node)),
-      _point_size(kDefaultPointSize) {}
+PointCloudPanel::PointCloudPanel() : _point_size(kDefaultPointSize) {}
 
 PointCloudPanel::~PointCloudPanel() = default;
 
-ViewWindow PointCloudPanel::MakeViewWindow() {
-  ViewWindow view;
-  view.id = kViewWindowId;
-  view.title = kViewWindowTitle;
-  view.open_on_first_run = kViewWindowOpenOnFirstRun;
-  view.draw = [self = shared_from_this()] { self->Draw(); };
+MonitorView PointCloudPanel::MakeMonitorView() {
+  MonitorView view;
+  view.id = kMonitorViewId;
+  view.title = kMonitorViewTitle;
+  view.open_on_first_run = kMonitorOpenOnFirstRun;
+  view.accepts = &AcceptsPointCloud;
+  view.draw = [self = shared_from_this()](const tg::NodeData& data,
+                                          float width, float height) {
+    self->DrawContent(data, width, height);
+  };
+  view.status = [self = shared_from_this()](const tg::NodeData* data) {
+    return self->StatusText(data);
+  };
   return view;
 }
 
-void PointCloudPanel::Draw() {
+void PointCloudPanel::DrawContent(const tg::NodeData& data, float width,
+                                  float height) {
+  if (width <= 0.0f || height <= 0.0f) {
+    return;
+  }
   EnsureViewer();
-  CollectOutputs();
-  const OutputEntry* entry = ActiveOutput();
-  if (_viewer != nullptr) {
-    UpdateActor(entry);
-    // 视图放在窗口内容最上方：VtkViewer 用内容起点换算鼠标坐标，
-    // 工具栏放在下面时旋转/缩放的落点才对得上。
-    const float footer_height =
-        ImGui::GetTextLineHeightWithSpacing() +
-        ImGui::GetFrameHeightWithSpacing() +
-        ImGui::GetStyle().ItemSpacing.y;
-    const ImVec2 available = ImGui::GetContentRegionAvail();
-    const float viewport_height =
-        (std::max)(available.y - footer_height, kMinViewportHeightEpx);
-    _viewer->render(ImVec2(available.x, viewport_height));
+  UpdateActor(data);
+  if (_viewer == nullptr) {
+    if (!_viewer_error.empty()) {
+      ImGui::TextWrapped("%s", _viewer_error.c_str());
+    }
+    return;
   }
-  ImGui::TextWrapped("%s", _status.c_str());
-  DrawSourceControls();
-  if (_viewer == nullptr && !_viewer_error.empty()) {
-    ImGui::TextWrapped("%s", _viewer_error.c_str());
+  // 视口贴在内容区顶部：imgui-vtk 用子窗口内容起点换算鼠标坐标。
+  const float ui_scale = ImGui::GetStyle().FontScaleMain;
+  const float options_height =
+      kOutputToolbarHeightEpx * ui_scale + ImGui::GetStyle().ItemSpacing.y;
+  const float viewport_height =
+      (std::max)(height - options_height, kMinViewportHeightEpx);
+  _viewer->render(ImVec2(width, viewport_height));
+  if (!_build_error.empty()) {
+    ImGui::TextDisabled("%s", _build_error.c_str());
+    return;
   }
+  DrawOptions();
 }
 
-void PointCloudPanel::CollectOutputs() {
-  _entries.clear();
-  _pinned_node_exists = false;
-  for (const std::shared_ptr<tg::Graph>& graph : _controller.getGraphs()) {
-    if (graph == nullptr) {
-      continue;
-    }
-    for (const std::shared_ptr<tg::Node>& node : graph->getNodes()) {
-      if (node == nullptr) {
-        continue;
-      }
-      if (node.get() == _pinned_node) {
-        _pinned_node_exists = true;
-      }
-      for (unsigned int port = 0; port < node->outputPortCount(); ++port) {
-        std::shared_ptr<pg::CloudData> data =
-            std::dynamic_pointer_cast<pg::CloudData>(
-                node->getOutPortData(port));
-        if (data == nullptr || data->desc() == nullptr ||
-            data->cloud() == nullptr || !HasXyzFields(*data->desc())) {
-          continue;
-        }
-        const char* caption =
-            node->fixedPortCaption(tg::PortType::Out, port);
-        std::string label = graph->getName();
-        label += " / ";
-        label += node->getName();
-        label += " / ";
-        label += (caption != nullptr && caption[0] != '\0')
-                     ? caption
-                     : kFallbackPortCaption;
-        OutputEntry entry;
-        entry.graph = graph;
-        entry.node = node.get();
-        entry.port = port;
-        entry.data = std::move(data);
-        entry.label = std::move(label);
-        _entries.push_back(std::move(entry));
-      }
-    }
+std::string PointCloudPanel::StatusText(const tg::NodeData* data) const {
+  const auto* cloud = dynamic_cast<const pg::CloudData*>(data);
+  if (cloud == nullptr || cloud->desc() == nullptr) {
+    return {};
   }
-  if (!_follow_selection && _pinned_node != nullptr && !_pinned_node_exists) {
-    _pinned_node = nullptr;
-    _pinned_port = 0;
-  }
+  std::string text = cloud->desc()->display_name;
+  text += " / ";
+  text += std::to_string(cloud->pointCount());
+  text += " points";
+  return text;
 }
 
-const PointCloudPanel::OutputEntry* PointCloudPanel::ActiveOutput() const {
-  tg::Node* target = nullptr;
-  bool exact_port = false;
-  if (_follow_selection) {
-    target = _selected_node ? _selected_node() : nullptr;
-  } else {
-    target = _pinned_node;
-    exact_port = true;
-  }
-  if (target == nullptr) {
-    return nullptr;
-  }
-  for (const OutputEntry& entry : _entries) {
-    if (entry.node != target) {
-      continue;
-    }
-    if (exact_port && entry.port != _pinned_port) {
-      continue;
-    }
-    return &entry;
-  }
-  return nullptr;
-}
-
-void PointCloudPanel::DrawSourceControls() {
-  bool follow = _follow_selection;
-  if (ImGui::Checkbox(kFollowSelectionLabel, &follow)) {
-    if (!follow) {
-      if (const OutputEntry* current = ActiveOutput()) {
-        _pinned_node = current->node;
-        _pinned_port = current->port;
-      } else {
-        _pinned_node = nullptr;
-        _pinned_port = 0;
-      }
-    } else {
-      _pinned_node = nullptr;
-      _pinned_port = 0;
-    }
-    _follow_selection = follow;
-  }
-  ImGui::SameLine();
-
-  const OutputEntry* current = ActiveOutput();
-  tg::Node* selected =
-      _follow_selection && _selected_node ? _selected_node() : nullptr;
-  const char* preview = nullptr;
-  if (current != nullptr) {
-    preview = current->label.c_str();
-  } else if (_follow_selection) {
-    preview = selected != nullptr ? kSelectedNodeNoCloudHint
-                                  : kNoSelectedNodeHint;
-  } else {
-    preview = _pinned_node != nullptr ? kPinnedNodeNoCloudHint
-                                      : kNoPinnedNodeHint;
-  }
-
-  const float width =
-      (std::min)(ImGui::GetContentRegionAvail().x,
-                 kSourceComboWidthEpx * ImGui::GetStyle().FontScaleMain);
-  ImGui::SetNextItemWidth(width);
-  if (ImGui::BeginCombo(kSourceComboId, preview)) {
-    if (_entries.empty()) {
-      ImGui::TextDisabled("%s", kNoPointCloudHint);
-    }
-    for (std::size_t index = 0; index < _entries.size(); ++index) {
-      const OutputEntry& entry = _entries[index];
-      const bool selected_entry =
-          current != nullptr && current->node == entry.node &&
-          current->port == entry.port;
-      ImGui::PushID(static_cast<int>(index));
-      if (ImGui::Selectable(entry.label.c_str(), selected_entry)) {
-        _follow_selection = false;
-        _pinned_node = entry.node;
-        _pinned_port = entry.port;
-      }
-      ImGui::PopID();
-    }
-    ImGui::EndCombo();
-  }
-
-  ImGui::SameLine();
-  if (ImGui::Button(kFitLabel) && _viewer != nullptr) {
+void PointCloudPanel::DrawOptions() {
+  const float ui_scale = ImGui::GetStyle().FontScaleMain;
+  // 和 Output 相同的 22×s 紧凑行；没来源控件后只留 Fit 与 "..."。
+  PushOutputToolbarStyle();
+  if (TextAction(kFitLabel, kToolbarTextMetrics)) {
     _viewer->getRenderer()->ResetCamera();
   }
+
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(kPointSizeSliderWidthEpx *
-                          ImGui::GetStyle().FontScaleMain);
-  if (ImGui::SliderFloat(kPointSizeLabel, &_point_size, kMinPointSize,
-                         kMaxPointSize, kPointSizeFormat)) {
-    if (_actor != nullptr) {
-      _actor->GetProperty()->SetPointSize(_point_size);
-    }
+  if (TextAction(kMoreActionsLabel, kToolbarTextMetrics, false,
+                 kViewOptionsTooltip)) {
+    ImGui::OpenPopup(kViewOptionsPopupId);
   }
+  if (ImGui::BeginPopup(kViewOptionsPopupId)) {
+    ImGui::SetNextItemWidth(kPointSizeSliderWidthEpx * ui_scale);
+    if (ImGui::SliderFloat(kPointSizeLabel, &_point_size, kMinPointSize,
+                           kMaxPointSize, kPointSizeFormat)) {
+      if (_actor != nullptr) {
+        _actor->GetProperty()->SetPointSize(_point_size);
+      }
+    }
+    ImGui::EndPopup();
+  }
+  PopOutputToolbarStyle();
 }
 
 void PointCloudPanel::EnsureViewer() {
@@ -439,7 +339,6 @@ void PointCloudPanel::EnsureViewer() {
     if (gl3wInit() != 0) {
       _viewer_failed = true;
       _viewer_error = kLoaderFailedHint;
-      _status = kLoaderFailedHint;
       return;
     }
     _gl_loader_ready = true;
@@ -452,45 +351,30 @@ void PointCloudPanel::EnsureViewer() {
   } catch (const std::exception& error) {
     _viewer_failed = true;
     _viewer_error = error.what();
-    _status = _viewer_error;
   }
 }
 
-void PointCloudPanel::UpdateActor(const OutputEntry* entry) {
-  if (entry == nullptr) {
-    ClearActor();
-    if (_entries.empty()) {
-      _status = kNoPointCloudHint;
-    } else if (_follow_selection) {
-      _status = (_selected_node && _selected_node() != nullptr)
-                    ? kSelectedNodeNoCloudHint
-                    : kNoSelectedNodeHint;
-    } else {
-      _status = _pinned_node != nullptr ? kPinnedNodeNoCloudHint
-                                        : kNoPinnedNodeHint;
-    }
-    return;
-  }
-  if (_shown_data == entry->data) {
+void PointCloudPanel::UpdateActor(const tg::NodeData& data) {
+  const auto* cloud = dynamic_cast<const pg::CloudData*>(&data);
+  std::shared_ptr<const void> cloud_data =
+      cloud != nullptr ? cloud->cloud() : nullptr;
+  if (&data == _shown_data && cloud_data.get() == _shown_cloud.get()) {
     return;
   }
   ClearActor();
-  _shown_data = entry->data;
-  PointCloudActorResult result = BuildPointCloudActor(*entry->data);
-  if (result.actor == nullptr || _viewer == nullptr) {
-    _status = result.message.empty() ? kBuildFailedHint : result.message;
+  _shown_data = &data;
+  _shown_cloud = std::move(cloud_data);
+  if (cloud == nullptr || _shown_cloud == nullptr || _viewer == nullptr) {
+    return;
+  }
+  PointCloudActorResult result = BuildPointCloudActor(*cloud);
+  if (result.actor == nullptr) {
+    _build_error = result.message.empty() ? kBuildFailedHint : result.message;
     return;
   }
   _actor = result.actor;
   _actor->GetProperty()->SetPointSize(_point_size);
   _viewer->addActor(_actor);
-  std::string status = entry->label;
-  status += " / ";
-  status += entry->data->desc()->display_name;
-  status += " / ";
-  status += std::to_string(result.point_count);
-  status += " points";
-  _status = std::move(status);
 }
 
 void PointCloudPanel::ClearActor() {
@@ -498,5 +382,7 @@ void PointCloudPanel::ClearActor() {
     _viewer->removeActor(_actor);
   }
   _actor = nullptr;
-  _shown_data.reset();
+  _shown_data = nullptr;
+  _shown_cloud.reset();
+  _build_error.clear();
 }

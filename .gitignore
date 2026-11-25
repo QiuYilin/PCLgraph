@@ -11,9 +11,20 @@ CTestTestfile.cmake
 _deps
 vcpkg_installed/
 CMakeUserPresets.json
+CMakePresets.json
 out/
+build/
 logs/
 examples/ui/demo-project/chef.pcd
 examples/ui/demo-project/source.pcd
 examples/ui/demo-project/target.pcd
 examples/ui/demo-project/aligned.pcd
+
+# Agent tooling / local agent state
+.kilo/
+.kilocode/
+.opencode/
+kilo.json
+kilo.jsonc
+.mcp.json
+AGENTS.md

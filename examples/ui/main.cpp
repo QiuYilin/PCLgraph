@@ -246,13 +246,19 @@ int main(int argc, char** argv) {
   tg::Controller project;
   pg::RegisterPclNodes(project);
 
+  const bool check_mode = argc > 1 && std::string(argv[1]) == "--check";
   const char* argv0 = argc > 0 ? argv[0] : nullptr;
   const std::filesystem::path demo_root =
       ExecutableDirectory(argv0) / "demo-project";
   std::string prepare_error;
-  if (!PrepareDemoData(demo_root, prepare_error)) {
+  const bool demo_ready = PrepareDemoData(demo_root, prepare_error);
+  if (!demo_ready) {
+    tg::logError("Demo data unavailable: {}", prepare_error);
     std::cerr << "Failed to prepare demo data: " << prepare_error << '\n';
-    return 1;
+    // GUI 模式继续启动工作台；--check 仍然失败。
+    if (check_mode) {
+      return 1;
+    }
   }
   if (!project.openProject(demo_root)) {
     std::cerr << "Failed to open demo project: " << demo_root << '\n';
@@ -260,7 +266,7 @@ int main(int argc, char** argv) {
   }
 
   // --check：不开窗口，只验证 demo 工程能载入、跑通并对齐。
-  if (argc > 1 && std::string(argv[1]) == "--check") {
+  if (check_mode) {
     std::cout << "project: " << project.projectName() << '\n';
     for (const auto& graph : project.getGraphs()) {
       std::cout << "graph: " << graph->getName() << '\n';
@@ -299,10 +305,9 @@ int main(int argc, char** argv) {
   }
 
   Ui ui(project);
-  // 视图存进 Ui 后由 ViewWindow 的 shared_ptr 持有，随 Ui 在 GL 上下文之前析构。
-  auto point_cloud = std::make_shared<PointCloudPanel>(
-      project, [&ui] { return ui.SelectedNode(); });
-  ui.AddViewWindow(point_cloud->MakeViewWindow());
+  // 监视器注册进 Ui 后由 MonitorView 的 shared_ptr 持有，随 Ui 在 GL 上下文之前析构。
+  auto point_cloud = std::make_shared<PointCloudPanel>();
+  ui.AddMonitorView(point_cloud->MakeMonitorView());
   ui.Run();
   return 0;
 }

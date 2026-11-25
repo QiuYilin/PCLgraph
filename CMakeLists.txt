@@ -19,7 +19,11 @@ if(PCLGRAPH_TASKGRAPH_DIR)
   set(TASKGRAPH_UI "${PCLGRAPH_TASKGRAPH_UI}" CACHE STRING "" FORCE)
   add_subdirectory(${PCLGRAPH_TASKGRAPH_DIR} ${CMAKE_BINARY_DIR}/_taskgraph)
 else()
-  find_package(taskgraph CONFIG REQUIRED)
+  if(PCLGRAPH_TASKGRAPH_UI STREQUAL "none")
+    find_package(taskgraph CONFIG REQUIRED COMPONENTS Core)
+  else()
+    find_package(taskgraph CONFIG REQUIRED COMPONENTS Core Ui)
+  endif()
 endif()
 
 enable_testing()
@@ -81,4 +85,23 @@ add_test(NAME pclgraph_core_tests
 option(PCLGRAPH_BUILD_EXAMPLES "Build PCLgraph examples" ON)
 if(PCLGRAPH_BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+# Doxygen 默认关闭；只有显式开启且找到 Doxygen 时才创建 doc 目标。
+option(PCLGRAPH_BUILD_DOCS "Build API documentation with Doxygen" OFF)
+if(PCLGRAPH_BUILD_DOCS)
+  find_package(Doxygen QUIET)
+  if(NOT Doxygen_FOUND)
+    message(FATAL_ERROR "PCLGRAPH_BUILD_DOCS=ON requires Doxygen")
+  endif()
+  set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs")
+  set(DOXYGEN_INPUT
+      "\"${PROJECT_SOURCE_DIR}/include/pclgraph\" \"${PROJECT_SOURCE_DIR}/examples/custom-node\"")
+  configure_file("${PROJECT_SOURCE_DIR}/docs/Doxyfile.in"
+                 "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile" @ONLY)
+  add_custom_target(doc
+    COMMAND ${DOXYGEN_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    COMMENT "Generating API documentation with Doxygen"
+    VERBATIM)
 endif()

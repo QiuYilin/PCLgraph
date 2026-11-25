@@ -1,114 +1,192 @@
 # PCLgraph
 
-一个基于点云库PCL的三维视觉数据流编程框架
+PCLgraph is a 3D vision dataflow framework built on the [Point Cloud Library (PCL)](https://pointclouds.org/), with [taskgraph](https://github.com/QiuYilin/taskgraph) as the graph runtime and ImGui workbench. Every PCL algorithm is a typed node; point clouds travel between nodes as `pg::CloudData`; a graph is a first-order, single-assignment, acyclic term (taskgraph semantics), and one `run` computes its value.
 
-仓库名为 PCLgraph；CMake 包名与 vcpkg 包名用 `pclgraph`，C++ 命名空间用 `pg`。
+The repository is named PCLgraph; the CMake project is `pclgraph` (targets `pclgraph::Core` / `pclgraph::Nodes`), and the C++ namespace is `pg`. Longer-term goals are in [docs/roadmap.md](docs/roadmap.md).
 
-# 依赖
+## Why PCLgraph
 
-C++17。依赖用 [vcpkg](https://github.com/microsoft/vcpkg) 管理，自定义端口来自个人注册表 [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry)。开发期 taskgraph 直接链接本地源码 `C:\Users\qiuyi\program\taskgraph`（0.3.0 基础层，尚未发布），不经过 vcpkg；taskflow 须为 **3.11.0**（最后一个可按 C++17 编译的版本，builtin 默认已是 4.x）。PCL 用 vcpkg 的 `pcl` port（Boost 为其传递依赖），测试用 `gtest`。UI 的三维点云视图用注册表里的 `imgui-vtk`，由它传递引入 VTK 9、gl3w 和 glfw3。
+PCL is a mature, widely used point-cloud library with a long history of contributed algorithms. In recent years its release cadence has been conservative, PCL 2.0 has not shipped, and much new work lives in separate research code rather than in the library.
 
-## 全局模式
+PCL also relies heavily on templates: the point type is usually a compile-time choice. PCLgraph keeps the PCL instantiations inside the nodes and moves that choice to the graph edge, where a port type selector picks the concrete type. Trying an algorithm, wiring a pipeline, and comparing results no longer require writing a new template stack for every point type.
 
-把 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) 里的 `registries` 放进 vcpkg 根目录的 `vcpkg-configuration.json`，并补上 `default-registry`，把它的 `baseline` 写成这份 vcpkg 检出的提交。`taskflow` 从个人注册表解析，其余端口仍来自这份检出；taskgraph 不由 vcpkg 安装。
+PCLgraph targets two groups: people learning point-cloud processing, who can build and inspect a pipeline visually, and researchers validating algorithms, who can drop a new method into a graph and compare it with existing nodes. Once built, changing the graph topology, parameters, or a supported point type does not require recompiling, so new combinations can be validated by editing the graph. It makes PCL algorithms easier to use, combine, and reuse.
+
+## Modules
+
+| Path | Target | Contents |
+| --- | --- | --- |
+| `include/pclgraph/` | — | Public headers: point types, algorithm registry, `CloudData` / `TransformData` / `DoubleData`, node declarations. |
+| `src/` | `pclgraph::Core` | Point-type registry and algorithm dispatch; depends on `taskgraph::Core` and `pcl_common`. |
+| `src/nodes/` | `pclgraph::Nodes` | IO / Filter / Keypoints / Features / Registration / Tool nodes and `RegisterPclNodes`. |
+| `src/smoke.cpp` | `pclgraph_smoke` | Minimal consumer linking `pclgraph::Nodes`. |
+| `examples/core/` | — | `pclgraph-core-example`: builds Reader → VoxelGrid → Writer in code. |
+| `examples/custom-node/` | — | `pclgraph-custom-node-example`: defines, registers, and runs a custom PCL node. |
+| `examples/ui/` | — | `pclgraph-ui-example`: taskgraph ImGui workbench plus the Point Cloud monitor. |
+| `tests/` | `pclgraph_tests` | gtest suites for core and nodes. |
+
+Layering: `pclgraph::Nodes` → `pclgraph::Core` → `taskgraph::Core`. The UI example additionally links `taskgraph::Ui` and `imgui-vtk`.
+
+# Dependencies
+
+C++17. Prefer [vcpkg](https://github.com/microsoft/vcpkg) for dependencies; custom ports come from the personal registry [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry). taskgraph comes from the registry as `taskgraph[ui-imgui] >= 0.3.0` (ImGui frontend). taskflow must be **3.11.0** (the last release that builds as C++17; the builtin registry already defaults to 4.x). PCL comes from the vcpkg `pcl` port (Boost is transitive), and tests use `gtest`. The UI's 3D point-cloud view uses `imgui-vtk` from the registry, which brings VTK 9, gl3w, and glfw3 transitively.
+
+Dependencies can be installed in classic mode or manifest mode.
+
+## Classic mode
+
+Copy the `registries` entry from [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) into `vcpkg-configuration.json` at the vcpkg root, add `default-registry` for your vcpkg checkout, and keep the personal registry's `baseline` from that file. `taskflow`, `imgui-vtk`, and `taskgraph` resolve from the personal registry; other ports stay on that checkout.
+
+Base (core and its tests):
 
 ```powershell
-vcpkg install taskflow spdlog nlohmann-json pcl gtest imgui-vtk
+C:\vcpkg\vcpkg.exe install taskflow spdlog nlohmann-json pcl gtest --triplet x64-windows
 ```
 
-装进 `C:\vcpkg\installed`。
+`PCLGRAPH_TASKGRAPH_UI=imgui` additionally needs:
 
-本地 taskgraph 由 CMake 的 `PCLGRAPH_TASKGRAPH_DIR` 指向源码目录链接；本机路径写在已忽略的 `CMakeUserPresets.json` 里，使用预设 `vs-2026-amd64-local`。该预设关闭 `VCPKG_MANIFEST_MODE`，直接使用全局已装依赖。
+```powershell
+C:\vcpkg\vcpkg.exe install "imgui[docking-experimental,glfw-binding,opengl3-binding]" opengl imgui-node-editor imgui-vtk portable-file-dialogs "taskgraph[ui-imgui]" --triplet x64-windows
+```
 
-## 清单模式
+Classic mode installs packages into the vcpkg installed tree, and CMake finds them through the vcpkg toolchain. When switching between modes in the same build directory, delete it first: vcpkg does not allow changing `VCPKG_MANIFEST_MODE` inside one build tree.
 
-使用 [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) 和 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json)；这两份也是将来 CI 复用的文件，装 `taskflow`、`spdlog`、`nlohmann-json`、`pcl`、`gtest`、`imgui-vtk`，taskgraph 仍由源码链接。在仓库根目录执行：
+## Manifest mode
+
+Use [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) and [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) to install the same dependencies (including `taskgraph[ui-imgui]`) into the manifest tree:
 
 ```powershell
 C:\vcpkg\vcpkg.exe install --x-manifest-root=.github/manifest --triplet x64-windows
 ```
 
-依赖装到 `.github/manifest/vcpkg_installed/`（已忽略）。
+Packages install into `.github/manifest/vcpkg_installed/` (ignored by Git); configure CMake with `-DVCPKG_MANIFEST_MODE=ON -DVCPKG_MANIFEST_DIR=.github/manifest`.
 
-# 节点
+# Build
 
-点云在图中传递 `pg::CloudData`（类型擦除句柄 + 具体点类型描述符）；端口按点类型 id 严格匹配，跨类型必须经过转换节点。节点通过 `pg::RegisterPclNodes(tg::Controller&)` 登记。
+Configure with the vcpkg toolchain. The example below uses classic mode:
 
-| 类型 id | 名称 | 分类 |
-| --- | --- | --- |
-| `pcl.io.reader` | PointCloud Reader | 3D/IO |
-| `pcl.io.writer` | PointCloud Writer | 3D/IO |
-| `pcl.io.concatenate_fields` | Concatenate Fields | 3D/IO |
-| `pcl.io.merge` | Merge | 3D/IO |
-| `pcl.filter.voxel_grid` | VoxelGrid | 3D/Filter-sampling |
-| `pcl.filter.passthrough` | PassThrough | 3D/Filter-ROI |
-| `pcl.filter.median_filter` | MedianFilter3d | 3D/Filter-Denoising |
-| `pcl.filter.radius_outlier_removal` | RadiusOutlierRemoval | 3D/Filter-Denoising |
-| `pcl.filter.crop_box` | CropBox | 3D/Filter-ROI |
-| `pcl.filter.approximate_voxel_grid` | ApproximateVoxelGrid | 3D/Filter-sampling |
-| `pcl.filter.uniform_sampling` | UniformSampling | 3D/Filter-sampling |
-| `pcl.filter.remove_nan` | RemoveNan | 3D/Filter-Tool |
-| `pcl.filter.bilateral_filter` | BilateralFilter | 3D/Filter-Denoising |
-| `pcl.filter.fast_bilateral_filter` | FastBilateralFilter | 3D/Filter-Denoising |
-| `pcl.filter.shadow_points` | ShadowPoints | 3D/Filter-Denoising |
-| `pcl.filter.covariance_sampling` | CovarianceSampling | 3D/Filter-sampling |
-| `pcl.filter.normal_space_sampling` | NormalSpaceSampling | 3D/Filter-sampling |
-| `pcl.keypoints.sift` | SIFT | 3D/Keypoints |
-| `pcl.keypoints.iss_3d` | ISS3D | 3D/Keypoints |
-| `pcl.keypoints.harris_3d` | Harris3D | 3D/Keypoints |
-| `pcl.features.normal_estimation` | NormalEstimation | 3D/Features |
-| `pcl.features.fpfh` | FPFH | 3D/Features |
-| `pcl.registration.icp_point_to_point` | ICP Point-to-Point | 3D/Registration |
-| `pcl.registration.ndt` | NDT | 3D/Registration |
-| `pcl.registration.sac_ia` | SAC-IA | 3D/Registration |
-| `pcl.registration.icp_point_to_plane` | ICP Point-to-Plane | 3D/Registration |
-| `pcl.registration.fpcs` | FPCS | 3D/Registration |
-| `pcl.tool.convert` | PointCloud Convert | 3D/Tool |
-| `pcl.tool.transform_point_cloud` | Transform PointCloud | 3D/Tool |
-| `pcl.tool.calc_model_reso` | Calc Model Reso | 3D/Tool |
-
-分类名是 `3D/<组>` 形式的二级路径；taskgraph 当前把 `category` 当单个字符串分组，不展开两级树。
-
-Reader 的 `point_type` 默认 `Auto`，按文件头字段推断；
-Writer 需要选一个与上游一致的 `input_type`。类型选择器（`point_type` / `input_type` / `output_type`）直接显示在端口类型名处，不进属性表；属性表只放路径、格式、滤波参数等。`MedianFilter3d` 要求 organized 点云。
-
-点类型不再手写：支持的 XYZ 类型跟随安装的 PCL `PCL_XYZ_POINT_TYPES`（当前 PCL 1.15.1 为 18 种），另加 `pcl::Normal`；filter 的类型下拉按 PCL 预编译的实例化列表生成。`BilateralFilter` 只有 `PointXYZI` / `PointXYZINormal`，`FastBilateralFilter` 只有 `PointXYZ` / `PointXYZRGB` / `PointXYZRGBA`，且要求 organized。`ShadowPoints` / `CovarianceSampling` 需要第二个 `Normal` 输入；`CovarianceSampling` 的主点云只支持 PCL 预编译的 5 种。`FPFH` 同样需要 `Normal`，主点云只支持 PCL 核心 5 种，输出 `FPFHSignature33`。`ICP Point-to-Point` 输出对齐点云和 `Transform`，只支持 PCL 预编译的 `PointXYZ / PointXYZI / PointXYZRGB` 同类型配对。
-`NDT` 输出 `Transform`，类型范围同 Point-to-Point；`SAC-IA` 需要源/目标点云及各自的 `FPFH` 特征（4 个输入），类型范围同 FPFH，输出对齐点云和 `Transform`；`Transform PointCloud` 用 `Transform` 变换任意已注册的 XYZ 点云。`Concatenate Fields` 把主点云与 `Normal` 合并，支持 `PointXYZ / PointXYZI / PointXYZRGB / PointXYZL` 四组输出；`Merge` 拼接两个同类型点云。`Calc Model Reso` 输入固定 `PointXYZ`，输出 `Double` 平均最近邻距离（原插件输出的是平方值）。
-`SIFT` 固定 `PointXYZI → PointXYZ`；`ISS3D` 输入/输出 `PointXYZ`；`Harris3D` 需要 `PointXYZ + Normal`，输出 `PointXYZI`。`NormalSpaceSampling` 需要 `Normal`，支持 `PointXYZ / PointXYZI`。`FPCS` 支持 `PointXYZ / PointXYZI`，可选两路法线，输出对齐点云和 `Transform`；`ICP Point-to-Plane` 只支持 `PointNormal / PointXYZINormal`。
-
-# 示例
-
-- `pclgraph-core-example`：代码搭 Reader→VoxelGrid→Writer，在临时目录生成点云并打印下采样前后的点数。
-- `pclgraph-ui-example`：taskgraph ImGui 工作台，加载 `examples/ui/demo-project`；示例图是完整配准流程 `Reader → VoxelGrid → ISS3D → NormalEstimation → Convert → FPFH → SAC-IA → Transform → ICP → Writer`；`--check` 不开窗口验证工程能载入、跑通，并检查关键点数量和最终对齐的最近邻误差。
-
-示例点云不提交到仓库：CMake 默认从 PCL 1.15.1 官方样例下载 `chef.pcd`（固定 SHA256）到构建目录，也可用 `-DPCLGRAPH_DEMO_PCD=<本地 chef.pcd>` 覆盖。程序启动时把样例归一化，并在 exe 旁生成 `source.pcd` / `target.pcd`；target 是 source 的已知刚体变换，用于校验配准误差。该流程是 PCL 官方 `template_alignment` 的关键点变体：官方样例不使用 ISS 关键点，FPFH 直接在下采样点云上计算。
-
-**Point Cloud** 是独立的浮动窗口，不占 Output 面板：首次运行自动打开，位置可拖、可停靠；关闭后从标题栏 **View → Point Cloud** 重新打开，开关状态写进 taskgraph 会话。选中带点云输出的节点并 **Run Graph** 后，窗口默认跟随画布选中节点显示三维点云；取消 **Follow Selection** 或直接改下拉框可锁定到某个节点输出，方便当常驻视图用。VTK 要求 OpenGL 3.2，因此 taskgraph 的 ImGui 窗口上下文已升到 3.2 core。该视图依赖本地 taskgraph 源码新增的 `Ui::SelectedNode()`，发布版 taskgraph 要等 0.3.0 之后才能走注册表。
-
-面板里的 **Output** 视图，其 Detail 预设与类别开关由 taskgraph 提供；PCLgraph 为 `CloudData` / `TransformData` 实现 `debugSummary()`，所以 Summary 下能看到点云类型、点数、organized 尺寸与字段（如 `PointXYZ(3133 pts, unorganized, fields=xyz)`），以及 Transform 的平移、角度和轴。摘要只读元数据，不逐点统计，也不序列化点云。
-
-本地预设 `vs-2026-amd64-local` 已设 `PCLGRAPH_TASKGRAPH_UI=imgui`，会同时构建两个示例。
-
-# 预期目标
-
-1.得益于PCL算法的结构化设计，将每个算法作为数据流一个执行单元
-
-2.核心思想是图拓扑排序+数据流传递+线程池,类似于有数据流机制的PCL特化的taskflow/CGraph
-
-3.提供开发过程中的可视化辅助，可能使用imgui，类似于Halcon的HDEVELOP，帮助三维视觉开发者快速生成dll
-
-# 预期用法
-
+```powershell
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -DPCLGRAPH_TASKGRAPH_UI=imgui
+cmake --build build --config Release
 ```
-pg::Graph A;
-pg::Executor;
-pg::VoxGridNode a;
-a.property[0] = 0;
-pg::ResistrationNode b;
-b.property[1] = 1;
-A.add(a);
-A.add(b);
-if(A.connect<tg::CloudData>(a.outport.cloud,b.inport.cloud)){
-    Executor.run(A);
+
+For manifest mode, add `-DVCPKG_MANIFEST_MODE=ON -DVCPKG_MANIFEST_DIR=.github/manifest` to the configure command. Executables land in `build/bin/<config>/`.
+
+| Option | Values | Default | Meaning |
+| --- | --- | --- | --- |
+| `PCLGRAPH_BUILD_EXAMPLES` | `ON` / `OFF` | `ON` | Build `pclgraph-core-example` always, and `pclgraph-ui-example` when the UI is `imgui`. |
+| `PCLGRAPH_TASKGRAPH_UI` | `imgui` / `qt` / `none` | `none` | Only `imgui` builds PCLgraph's UI example. |
+| `PCLGRAPH_DEMO_PCD` | file path | empty | Local `chef.pcd` for the UI demo; empty downloads the PCL sample at build time. |
+| `PCLGRAPH_BUILD_DOCS` | `ON` / `OFF` | `OFF` | Generate API docs with Doxygen (`doc`). |
+
+PCLgraph currently has no install or export rules, so there is no `find_package(pclgraph)` yet; the examples link the in-tree targets.
+
+## API docs
+
+API docs are off by default. Configure with `-DPCLGRAPH_BUILD_DOCS=ON` (Doxygen required), then generate them with:
+
+```powershell
+cmake --build build --target doc
+```
+
+Output: `build/docs/html/index.html`. If CMake cannot find Doxygen, configure with `-DDOXYGEN_EXECUTABLE="C:/Program Files/doxygen/bin/doxygen.exe"` or add `C:\Program Files\doxygen\bin` to `PATH`.
+
+# Tests
+
+```powershell
+ctest --test-dir build -C Release --output-on-failure
+```
+
+`pclgraph_tests` covers the point-type registry, `CloudData`, and algorithm dispatch, plus Reader inference, filters, `NormalEstimation` / `FPFH`, `ICP` / `NDT` / `SAC-IA` / `FPCS`, strict type matching, and the Reader → VoxelGrid → Writer graph. The UI example's `--check` loads and runs the demo project without opening a window, then verifies the keypoint count and the final nearest-neighbor alignment error.
+
+The test `PATH` is pinned to `C:/vcpkg/installed/...`, so tests run with the classic-mode DLLs even when the build used manifest mode.
+
+# Usage
+
+## core
+
+`examples/core/main.cpp` builds Reader → VoxelGrid → Writer and prints the point counts:
+
+```cpp
+tg::Controller project;
+auto graph = project.createGraph();
+auto reader = graph->createNode<pg::PointCloudReaderNode>();
+auto grid = graph->createNode<pg::VoxelGridNode>();
+auto sink = graph->createNode<pg::PointCloudWriterNode>();
+
+reader->setPath("points.pcd");
+grid->setLeafSize(2.0, 2.0, 2.0);
+sink->setPath("downsampled.pcd");
+
+graph->connect<pg::CloudData>(reader->outport.cloud, grid->inport.cloud);
+graph->connect<pg::CloudData>(grid->outport.cloud, sink->inport.cloud);
+
+if (const auto error = project.tryRun(*graph)) {
+    std::cerr << "run failed: " << *error << '\n';
+    return 1;
 }
 ```
+
+Template `createNode<T>()` instantiates the node directly, so `pg::RegisterPclNodes` is not required here. Registration is needed when a project is loaded from disk or when the workbench builds the node palette.
+
+## core + ui
+
+`examples/ui/main.cpp` registers PCL nodes, opens a project, and adds the point-cloud monitor to the taskgraph workbench:
+
+```cpp
+tg::Controller project;
+pg::RegisterPclNodes(project);
+project.openProject("demo-project");
+
+Ui ui(project);
+auto point_cloud = std::make_shared<PointCloudPanel>();
+ui.AddMonitorView(point_cloud->MakeMonitorView());
+ui.Run();
+```
+
+## Custom nodes
+
+Derive from `pg::PclNodeBase`, declare `tg::In<pg::CloudData>` / `tg::Out<pg::CloudData>` ports, implement the port hooks and `compute()`, then register the type:
+
+```cpp
+class TranslateNode final : public pg::PclNodeBase {
+ public:
+  static constexpr const char* kTypeId = "custom.translate";
+  struct InPort { tg::In<pg::CloudData> cloud; };
+  struct OutPort { tg::Out<pg::CloudData> cloud; };
+
+  TranslateNode()
+      : inport{tg::In<pg::CloudData>{this, 0}},
+        outport{tg::Out<pg::CloudData>{this, 0}} {
+    setTypeId(kTypeId);
+  }
+
+  unsigned int nFixedPorts(tg::PortType) const override;
+  tg::NodeDataType fixedDataType(tg::PortType, unsigned int) const override;
+  const char* fixedPortId(tg::PortType, unsigned int) const override;
+  const char* fixedPortCaption(tg::PortType, unsigned int) const override;
+  void compute() override;
+  // onSetInPortData / getOutPortData ...
+  InPort inport;
+  OutPort outport;
+};
+
+project.registerNodeType<TranslateNode>("Translate", "3D/Tool");
+```
+
+See [docs/custom-nodes.md](docs/custom-nodes.md) for the full node, multi-point-type dispatch, and tests; `examples/custom-node` is the runnable version.
+
+# Nodes
+
+Point clouds travel through the graph as `pg::CloudData` (a type-erased handle plus a concrete point-type descriptor). Ports match point-type ids strictly; use the Convert node to change type, and register everything with `pg::RegisterPclNodes(tg::Controller&)`.
+
+Supported XYZ types follow PCL's `PCL_XYZ_POINT_TYPES`, plus `pcl::Normal`; dropdowns are generated from PCL's precompiled instantiations. `point_type` on Reader defaults to `Auto`; Writer needs an `input_type` matching its upstream. Type selectors sit on the port, not in the property table.
+
+See [docs/nodes.md](docs/nodes.md) for the full node list and per-node type constraints.
+
+# Examples
+
+- `pclgraph-core-example`: builds Reader → VoxelGrid → Writer in code and prints the point counts before and after downsampling.
+- `pclgraph-ui-example`: opens `examples/ui/demo-project` in the taskgraph ImGui workbench and runs a full registration pipeline (VoxelGrid, ISS3D, NormalEstimation, FPFH, SAC-IA, ICP) ending in a Writer. `--check` runs it without a window and validates the keypoint count and alignment error.
+
+See [docs/ui.md](docs/ui.md) for the UI.
