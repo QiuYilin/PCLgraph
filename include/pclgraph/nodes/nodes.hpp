@@ -1423,7 +1423,7 @@ class PointCloudMergeNode final : public PclNodeBase {
   std::shared_ptr<tg::NodeData> _out;
 };
 
-/** \brief 估算点云平均最近邻间距。 */
+/** \brief 对每个点的最近非零邻距求平均；没有有效邻居的点不计入。 */
 class CalcModelResoNode final : public PclNodeBase {
  public:
   static constexpr const char* kTypeId = "pcl.tool.calc_model_reso";

@@ -91,8 +91,8 @@ void CalcModelResoNode::compute() {
   pcl::Indices indices;
   std::vector<float> sqr_distances;
 
-  double sum = 0.0;
-  int count = 0;
+  double distance_sum = 0.0;
+  int counted_points = 0;
   for (std::size_t i = 0; i < src->size(); ++i) {
     if (!pcl::isFinite(src->at(i))) {
       continue;
@@ -102,17 +102,24 @@ void CalcModelResoNode::compute() {
     if (found <= 0) {
       continue;
     }
-    for (const float distance : sqr_distances) {
-      if (distance != 0.0f) {
-        sum += distance;
-        break;
+    const int neighbor_count =
+        std::min(found, static_cast<int>(sqr_distances.size()));
+    for (int neighbor = 0; neighbor < neighbor_count; ++neighbor) {
+      const float sqr_distance =
+          sqr_distances[static_cast<std::size_t>(neighbor)];
+      if (sqr_distance == 0.0f) {
+        continue;
       }
+      distance_sum += std::sqrt(static_cast<double>(sqr_distance));
+      ++counted_points;
+      break;
     }
-    ++count;
   }
 
   const double resolution =
-      count > 0 ? std::sqrt(sum / static_cast<double>(count)) : 0.0;
+      counted_points > 0
+          ? distance_sum / static_cast<double>(counted_points)
+          : 0.0;
   _value_out = std::make_shared<DoubleData>(resolution);
 }
 

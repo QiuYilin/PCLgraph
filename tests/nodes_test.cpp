@@ -1254,6 +1254,42 @@ TEST_F(NodesTest, CalcModelResoEstimatesSpacing) {
   EXPECT_THROW(empty.compute(), tg::NodeError);
 }
 
+TEST_F(NodesTest, CalcModelResoAveragesUnevenSpacing) {
+  constexpr float kNearSpacing = 0.1f;
+  constexpr float kFarSpacing = 0.4f;
+  constexpr int kSearchNeighbors = 2;
+  constexpr int kDuplicateGroupSize = kSearchNeighbors;
+  constexpr int kGapCount = 2;
+  // Farther than either spacing, so the neighbor search stays inside each
+  // pair and inside the duplicate group.
+  constexpr float kClusterOffset = 10.0f;
+  constexpr double kMeanTolerance = 1.0e-4;
+
+  auto cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  cloud->push_back(pcl::PointXYZ{0.0f, 0.0f, 0.0f});
+  cloud->push_back(pcl::PointXYZ{kNearSpacing, 0.0f, 0.0f});
+  cloud->push_back(pcl::PointXYZ{kClusterOffset, 0.0f, 0.0f});
+  cloud->push_back(pcl::PointXYZ{kClusterOffset + kFarSpacing, 0.0f, 0.0f});
+  const pcl::PointXYZ duplicate{0.0f, kClusterOffset, 0.0f};
+  for (int copy = 0; copy < kDuplicateGroupSize; ++copy) {
+    cloud->push_back(duplicate);
+  }
+  const auto input = MakeCloudData(cloud);
+
+  pg::CalcModelResoNode node;
+  ASSERT_TRUE(SetProp(node, "k", kSearchNeighbors));
+  node.setInPortData(0, input);
+  node.compute();
+
+  const auto value =
+      std::dynamic_pointer_cast<pg::DoubleData>(node.getOutPortData(0));
+  ASSERT_NE(value, nullptr);
+  const double expected_mean =
+      (static_cast<double>(kNearSpacing) + static_cast<double>(kFarSpacing)) /
+      static_cast<double>(kGapCount);
+  EXPECT_NEAR(value->value(), expected_mean, kMeanTolerance);
+}
+
 TEST_F(NodesTest, SacIaAlignsPointClouds) {
   const auto source = MakeXyzData();
   const auto target = MakeXyzData();

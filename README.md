@@ -1,8 +1,12 @@
 # PCLgraph
 
+Version **0.1.0**.
+
 PCLgraph is a 3D vision dataflow framework built on the [Point Cloud Library (PCL)](https://pointclouds.org/), with [taskgraph](https://github.com/QiuYilin/taskgraph) as the graph runtime and ImGui workbench. Every PCL algorithm is a typed node; point clouds travel between nodes as `pg::CloudData`; a graph is a first-order, single-assignment, acyclic term (taskgraph semantics), and one `run` computes its value.
 
 The repository is named PCLgraph; the CMake project is `pclgraph` (targets `pclgraph::Core` / `pclgraph::Nodes`), and the C++ namespace is `pg`. Longer-term goals are in [docs/roadmap.md](docs/roadmap.md).
+
+![PCL Demo: the Point Cloud Registration graph in the workbench](docs/images/pclgraph.gif)
 
 ## Why PCLgraph
 
@@ -99,7 +103,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 `pclgraph_tests` covers the point-type registry, `CloudData`, and algorithm dispatch, plus Reader inference, filters, `NormalEstimation` / `FPFH`, `ICP` / `NDT` / `SAC-IA` / `FPCS`, strict type matching, and the Reader → VoxelGrid → Writer graph. The UI example's `--check` loads and runs the demo project without opening a window, then verifies the keypoint count and the final nearest-neighbor alignment error.
 
-The test `PATH` is pinned to `C:/vcpkg/installed/...`, so tests run with the classic-mode DLLs even when the build used manifest mode.
+The test `PATH` uses the toolchain's `VCPKG_INSTALLED_DIR` and `VCPKG_TARGET_TRIPLET`: Debug loads `<triplet>/debug/bin`, and every other configuration loads `<triplet>/bin`. `ctest --test-dir build -C Release` then finds the PCL and gtest DLLs in the install tree that built the tests, whether that tree is the classic vcpkg install or a manifest root such as `.github/manifest/vcpkg_installed/`.
 
 # Usage
 
@@ -180,7 +184,7 @@ See [docs/custom-nodes.md](docs/custom-nodes.md) for the full node, multi-point-
 
 Point clouds travel through the graph as `pg::CloudData` (a type-erased handle plus a concrete point-type descriptor). Ports match point-type ids strictly; use the Convert node to change type, and register everything with `pg::RegisterPclNodes(tg::Controller&)`.
 
-Supported XYZ types follow PCL's `PCL_XYZ_POINT_TYPES`, plus `pcl::Normal`; dropdowns are generated from PCL's precompiled instantiations. `point_type` on Reader defaults to `Auto`; Writer needs an `input_type` matching its upstream. Type selectors sit on the port, not in the property table.
+Point types follow PCL's precompiled point-type set, plus `pcl::Normal`. Reader infers the type; Writer matches its upstream. Type selectors live on the port.
 
 See [docs/nodes.md](docs/nodes.md) for the full node list and per-node type constraints.
 

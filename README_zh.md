@@ -1,8 +1,12 @@
 # PCLgraph
 
+版本 **0.1.0**。
+
 PCLgraph 是基于 [PCL](https://pointclouds.org/) 的三维视觉数据流框架，图运行时和 ImGui 工作台由 [taskgraph](https://github.com/QiuYilin/taskgraph) 提供。每个 PCL 算法是一个带类型的节点，点云以 `pg::CloudData` 在节点之间传递；图是一阶、单赋值、无环项（taskgraph 语义），一次 `run` 算出它的值。
 
 仓库名为 PCLgraph；CMake 工程名为 `pclgraph`（目标 `pclgraph::Core` / `pclgraph::Nodes`），C++ 命名空间用 `pg`。长期目标见 [docs/roadmap.md](docs/roadmap.md)。
+
+![PCL Demo：工作台里的点云配准图](docs/images/pclgraph.gif)
 
 ## 为什么做 PCLgraph
 
@@ -99,7 +103,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 `pclgraph_tests` 覆盖点类型注册表、`CloudData`、算法分派，以及 Reader 推断、滤波、`NormalEstimation` / `FPFH`、`ICP` / `NDT` / `SAC-IA` / `FPCS`、类型严格匹配、Reader → VoxelGrid → Writer 整图。UI 示例的 `--check` 不开窗口验证 demo 工程、关键点数量和最终最近邻对齐误差。
 
-测试的 `PATH` 固定指向 `C:/vcpkg/installed/...`，所以即使用清单模式构建，测试运行时仍用全局 DLL。
+测试的 `PATH` 使用工具链的 `VCPKG_INSTALLED_DIR` 和 `VCPKG_TARGET_TRIPLET`：Debug 加载 `<triplet>/debug/bin`，其余配置加载 `<triplet>/bin`。`ctest --test-dir build -C Release` 会在本次构建所用的安装树里找到 PCL 和 gtest DLL；全局模式用 vcpkg 的 installed 树，清单模式用清单安装根（例如 `.github/manifest/vcpkg_installed/`）。
 
 # 用法
 
@@ -180,7 +184,7 @@ project.registerNodeType<TranslateNode>("Translate", "3D/Tool");
 
 点云在图中以 `pg::CloudData` 传递（类型擦除句柄 + 具体点类型描述符）。端口按点类型 id 严格匹配，跨类型用 Convert 节点；节点通过 `pg::RegisterPclNodes(tg::Controller&)` 登记。
 
-支持的 XYZ 类型跟随 PCL 的 `PCL_XYZ_POINT_TYPES`，另加 `pcl::Normal`；下拉项按 PCL 预编译的实例化生成。Reader 的 `point_type` 默认 `Auto`，Writer 需要与上游一致的 `input_type`；类型选择器在端口上，不进属性表。
+点类型跟随 PCL 的预编译点类型集合，另加 `pcl::Normal`。Reader 自动推断，Writer 跟随上游，类型选择器在端口上。
 
 完整节点列表和每个节点的类型限制见 [docs/nodes.md](docs/nodes.md)。
 

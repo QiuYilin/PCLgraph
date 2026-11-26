@@ -5,6 +5,10 @@
 #include <pcl/point_types.h>
 #include <pclgraph/pclgraph.hpp>
 #include <taskgraph/taskgraph.hpp>
+// PCL 带进 windows.h 后，CreateWindow 宏会改写 MonitorWorkspace::CreateWindow。
+#ifdef CreateWindow
+#undef CreateWindow
+#endif
 #include <Ui.hpp>
 
 #include <Eigen/Geometry>

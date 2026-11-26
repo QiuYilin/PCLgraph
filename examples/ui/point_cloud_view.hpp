@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include <vtkActor.h>
 #include <vtkSmartPointer.h>
@@ -28,7 +29,7 @@ struct PointCloudActorResult {
 /** \brief 把带 XYZ 的 pg::CloudData 转成 VTK actor；不触碰 OpenGL。 */
 PointCloudActorResult BuildPointCloudActor(const pg::CloudData& cloud);
 
-/** \brief 点云监视器：VTK 内容 + 点云选项；来源选择由 taskgraph 管。 */
+/** \brief 点云监视器：每个 Monitor 窗口一份 VTK；来源选择由 taskgraph 管。 */
 class PointCloudPanel
     : public std::enable_shared_from_this<PointCloudPanel> {
  public:
@@ -41,21 +42,20 @@ class PointCloudPanel
   MonitorView MakeMonitorView();
 
  private:
+  struct PointCloudInstance;
+
   void DrawContent(const tg::NodeData& data, float width, float height);
   std::string StatusText(const tg::NodeData* data) const;
-  void DrawOptions();
-  void EnsureViewer();
-  void UpdateActor(const tg::NodeData& data);
-  void ClearActor();
+  PointCloudInstance& CurrentInstance();
+  void DrawOptions(PointCloudInstance& instance);
+  void EnsureViewer(PointCloudInstance& instance);
+  void UpdateActor(PointCloudInstance& instance, const tg::NodeData& data);
+  void ClearActor(PointCloudInstance& instance);
 
-  std::unique_ptr<VtkViewer> _viewer;
-  std::string _viewer_error;
+  // 关掉的窗口没有回调，停靠后未激活的页签也不会每帧 draw，所以不按帧回收。
+  std::unordered_map<std::string, std::unique_ptr<PointCloudInstance>>
+      _instances;
   bool _gl_loader_ready = false;
-  bool _viewer_failed = false;
-
-  const tg::NodeData* _shown_data = nullptr;
-  std::shared_ptr<const void> _shown_cloud;
-  vtkSmartPointer<vtkActor> _actor;
-  std::string _build_error;
-  float _point_size;
+  bool _gl_loader_failed = false;
+  std::string _gl_loader_error;
 };

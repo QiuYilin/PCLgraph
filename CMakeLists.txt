@@ -77,9 +77,10 @@ add_executable(pclgraph_tests
   tests/core_test.cpp
   tests/nodes_test.cpp)
 target_link_libraries(pclgraph_tests PRIVATE pclgraph::Nodes GTest::gtest_main)
+# PATH 跟工具链的安装树走：Debug 用 debug/bin，其余配置用 bin。
 add_test(NAME pclgraph_core_tests
   COMMAND ${CMAKE_COMMAND} -E env
-    "PATH=$<IF:$<CONFIG:Debug>,C:/vcpkg/installed/x64-windows/debug/bin,C:/vcpkg/installed/x64-windows/bin>;${CMAKE_BINARY_DIR}/bin/$<CONFIG>;$ENV{PATH}"
+    "PATH=$<IF:$<CONFIG:Debug>,${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin,${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin>;${CMAKE_BINARY_DIR}/bin/$<CONFIG>;$ENV{PATH}"
     $<TARGET_FILE:pclgraph_tests>)
 
 option(PCLGRAPH_BUILD_EXAMPLES "Build PCLgraph examples" ON)

@@ -2,6 +2,7 @@
 
 #include <GL/gl3w.h>
 #include <imgui-vtk/VtkViewer.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cmath>
@@ -63,6 +64,23 @@ constexpr unsigned int kByteMask = 0xFFu;
 constexpr unsigned int kRgbRedShift = 16u;
 constexpr unsigned int kRgbGreenShift = 8u;
 constexpr unsigned int kRgbBlueShift = 0u;
+constexpr const char* kFallbackInstanceId = "point-cloud";
+
+// draw 发生在该实例的 ImGui::Begin 里，窗口名是 "Point Cloud###monitor.point-cloud.N"。
+std::string CurrentMonitorInstanceKey() {
+  const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+  if (window == nullptr || window->Name == nullptr || window->Name[0] == '\0') {
+    return kFallbackInstanceId;
+  }
+  const std::string name(window->Name);
+  const std::string marker(kWindowIdSeparator);
+  const std::size_t separator = name.rfind(marker);
+  if (separator == std::string::npos ||
+      separator + marker.size() >= name.size()) {
+    return name;
+  }
+  return name.substr(separator + marker.size());
+}
 
 bool HasXyzFields(const pg::PointTypeDesc& desc) {
   const pg::PointFields xyz =
@@ -113,6 +131,17 @@ bool IsFloatField(const pcl::PCLPointField* field) {
 }
 
 }  // namespace
+
+struct PointCloudPanel::PointCloudInstance {
+  std::unique_ptr<VtkViewer> viewer;
+  std::string viewer_error;
+  bool viewer_failed = false;
+  const tg::NodeData* shown_data = nullptr;
+  std::shared_ptr<const void> shown_cloud;
+  vtkSmartPointer<vtkActor> actor;
+  std::string build_error;
+  float point_size = kDefaultPointSize;
+};
 
 PointCloudActorResult BuildPointCloudActor(const pg::CloudData& cloud) {
   PointCloudActorResult result;
@@ -246,7 +275,7 @@ PointCloudActorResult BuildPointCloudActor(const pg::CloudData& cloud) {
   return result;
 }
 
-PointCloudPanel::PointCloudPanel() : _point_size(kDefaultPointSize) {}
+PointCloudPanel::PointCloudPanel() = default;
 
 PointCloudPanel::~PointCloudPanel() = default;
 
@@ -266,16 +295,28 @@ MonitorView PointCloudPanel::MakeMonitorView() {
   return view;
 }
 
+PointCloudPanel::PointCloudInstance& PointCloudPanel::CurrentInstance() {
+  const std::string key = CurrentMonitorInstanceKey();
+  std::unique_ptr<PointCloudInstance>& slot = _instances[key];
+  if (slot == nullptr) {
+    slot = std::make_unique<PointCloudInstance>();
+  }
+  return *slot;
+}
+
 void PointCloudPanel::DrawContent(const tg::NodeData& data, float width,
                                   float height) {
   if (width <= 0.0f || height <= 0.0f) {
     return;
   }
-  EnsureViewer();
-  UpdateActor(data);
-  if (_viewer == nullptr) {
-    if (!_viewer_error.empty()) {
-      ImGui::TextWrapped("%s", _viewer_error.c_str());
+  PointCloudInstance& instance = CurrentInstance();
+  EnsureViewer(instance);
+  UpdateActor(instance, data);
+  if (instance.viewer == nullptr) {
+    const std::string& error = !_gl_loader_error.empty() ? _gl_loader_error
+                                                         : instance.viewer_error;
+    if (!error.empty()) {
+      ImGui::TextWrapped("%s", error.c_str());
     }
     return;
   }
@@ -285,12 +326,12 @@ void PointCloudPanel::DrawContent(const tg::NodeData& data, float width,
       kOutputToolbarHeightEpx * ui_scale + ImGui::GetStyle().ItemSpacing.y;
   const float viewport_height =
       (std::max)(height - options_height, kMinViewportHeightEpx);
-  _viewer->render(ImVec2(width, viewport_height));
-  if (!_build_error.empty()) {
-    ImGui::TextDisabled("%s", _build_error.c_str());
+  instance.viewer->render(ImVec2(width, viewport_height));
+  if (!instance.build_error.empty()) {
+    ImGui::TextDisabled("%s", instance.build_error.c_str());
     return;
   }
-  DrawOptions();
+  DrawOptions(instance);
 }
 
 std::string PointCloudPanel::StatusText(const tg::NodeData* data) const {
@@ -305,12 +346,12 @@ std::string PointCloudPanel::StatusText(const tg::NodeData* data) const {
   return text;
 }
 
-void PointCloudPanel::DrawOptions() {
+void PointCloudPanel::DrawOptions(PointCloudInstance& instance) {
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
-  // 和 Output 相同的 22×s 紧凑行；没来源控件后只留 Fit 与 "..."。
-  PushOutputToolbarStyle();
+  // 和 Output 相同的 22×s 紧凑行；来源选择由宿主画，这里只留 Fit 与 "..."。
+  PushToolbarStyle();
   if (TextAction(kFitLabel, kToolbarTextMetrics)) {
-    _viewer->getRenderer()->ResetCamera();
+    instance.viewer->getRenderer()->ResetCamera();
   }
 
   ImGui::SameLine();
@@ -320,69 +361,74 @@ void PointCloudPanel::DrawOptions() {
   }
   if (ImGui::BeginPopup(kViewOptionsPopupId)) {
     ImGui::SetNextItemWidth(kPointSizeSliderWidthEpx * ui_scale);
-    if (ImGui::SliderFloat(kPointSizeLabel, &_point_size, kMinPointSize,
+    if (ImGui::SliderFloat(kPointSizeLabel, &instance.point_size, kMinPointSize,
                            kMaxPointSize, kPointSizeFormat)) {
-      if (_actor != nullptr) {
-        _actor->GetProperty()->SetPointSize(_point_size);
+      if (instance.actor != nullptr) {
+        instance.actor->GetProperty()->SetPointSize(instance.point_size);
       }
     }
     ImGui::EndPopup();
   }
-  PopOutputToolbarStyle();
+  PopToolbarStyle();
 }
 
-void PointCloudPanel::EnsureViewer() {
-  if (_viewer != nullptr || _viewer_failed) {
+void PointCloudPanel::EnsureViewer(PointCloudInstance& instance) {
+  if (instance.viewer != nullptr || instance.viewer_failed ||
+      _gl_loader_failed) {
     return;
   }
   if (!_gl_loader_ready) {
     if (gl3wInit() != 0) {
-      _viewer_failed = true;
-      _viewer_error = kLoaderFailedHint;
+      _gl_loader_failed = true;
+      _gl_loader_error = kLoaderFailedHint;
       return;
     }
     _gl_loader_ready = true;
   }
   try {
-    _viewer = std::make_unique<VtkViewer>();
-    _viewer->getRenderer()->SetBackground(kViewerBackground, kViewerBackground,
-                                          kViewerBackground);
-    _viewer->getRenderer()->SetBackgroundAlpha(kViewerBackgroundAlpha);
+    instance.viewer = std::make_unique<VtkViewer>();
+    instance.viewer->getRenderer()->SetBackground(
+        kViewerBackground, kViewerBackground, kViewerBackground);
+    instance.viewer->getRenderer()->SetBackgroundAlpha(kViewerBackgroundAlpha);
   } catch (const std::exception& error) {
-    _viewer_failed = true;
-    _viewer_error = error.what();
+    instance.viewer_failed = true;
+    instance.viewer_error = error.what();
   }
 }
 
-void PointCloudPanel::UpdateActor(const tg::NodeData& data) {
+void PointCloudPanel::UpdateActor(PointCloudInstance& instance,
+                                  const tg::NodeData& data) {
   const auto* cloud = dynamic_cast<const pg::CloudData*>(&data);
   std::shared_ptr<const void> cloud_data =
       cloud != nullptr ? cloud->cloud() : nullptr;
-  if (&data == _shown_data && cloud_data.get() == _shown_cloud.get()) {
+  if (&data == instance.shown_data &&
+      cloud_data.get() == instance.shown_cloud.get()) {
     return;
   }
-  ClearActor();
-  _shown_data = &data;
-  _shown_cloud = std::move(cloud_data);
-  if (cloud == nullptr || _shown_cloud == nullptr || _viewer == nullptr) {
+  ClearActor(instance);
+  instance.shown_data = &data;
+  instance.shown_cloud = std::move(cloud_data);
+  if (cloud == nullptr || instance.shown_cloud == nullptr ||
+      instance.viewer == nullptr) {
     return;
   }
   PointCloudActorResult result = BuildPointCloudActor(*cloud);
   if (result.actor == nullptr) {
-    _build_error = result.message.empty() ? kBuildFailedHint : result.message;
+    instance.build_error =
+        result.message.empty() ? kBuildFailedHint : result.message;
     return;
   }
-  _actor = result.actor;
-  _actor->GetProperty()->SetPointSize(_point_size);
-  _viewer->addActor(_actor);
+  instance.actor = result.actor;
+  instance.actor->GetProperty()->SetPointSize(instance.point_size);
+  instance.viewer->addActor(instance.actor);
 }
 
-void PointCloudPanel::ClearActor() {
-  if (_actor != nullptr && _viewer != nullptr) {
-    _viewer->removeActor(_actor);
+void PointCloudPanel::ClearActor(PointCloudInstance& instance) {
+  if (instance.actor != nullptr && instance.viewer != nullptr) {
+    instance.viewer->removeActor(instance.actor);
   }
-  _actor = nullptr;
-  _shown_data = nullptr;
-  _shown_cloud.reset();
-  _build_error.clear();
+  instance.actor = nullptr;
+  instance.shown_data = nullptr;
+  instance.shown_cloud.reset();
+  instance.build_error.clear();
 }
